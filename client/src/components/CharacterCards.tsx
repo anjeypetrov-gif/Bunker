@@ -128,13 +128,12 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
                     <Icon className={`w-8 h-8 ${locked ? 'text-slate-500' : 'text-amber-300'} opacity-90 group-hover:scale-110 transition-transform`} />
                   </div>
 
-                  {isActionCard || card.isRevealed ? (
-                    <>
-                      <h4 className="text-sm font-bold text-amber-200 mb-1.5 leading-snug font-mono">{card.title}</h4>
-                      <p className="text-xs text-slate-300 leading-relaxed font-sans">{card.description}</p>
-                    </>
-                  ) : (
-                    <p className="text-xs text-slate-500 leading-relaxed font-sans">Характеристика скрыта от остальных выживших.</p>
+                  {/* Owners always see their own card content — isRevealed only controls
+                      whether the REST of the group can see it (shown via the badge above). */}
+                  <h4 className="text-sm font-bold text-amber-200 mb-1.5 leading-snug font-mono">{card.title}</h4>
+                  <p className="text-xs text-slate-300 leading-relaxed font-sans">{card.description}</p>
+                  {!isActionCard && !card.isRevealed && (
+                    <p className="text-[10px] text-slate-500 leading-relaxed font-sans mt-1.5 italic">Пока скрыто от остальных выживших — видно только вам.</p>
                   )}
                 </div>
 

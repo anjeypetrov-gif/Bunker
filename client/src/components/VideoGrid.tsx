@@ -1,8 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Mic, MicOff, Video, VideoOff, Skull, Crown, ShieldCheck } from './icons';
-import { Player } from '../types/game';
+import { Mic, MicOff, Video, VideoOff, Skull, Crown, ShieldCheck, Eye, X } from './icons';
+import { Card, CardType, Player } from '../types/game';
 import { webRTCManager } from '../services/webrtc';
 import { socket } from '../services/socket';
+
+const CARD_TYPE_LABELS: Record<CardType, string> = {
+  profession: 'ПРОФЕССИЯ',
+  health: 'ЗДОРОВЬЕ',
+  biology: 'БИОЛОГИЯ',
+  hobby: 'ХОББИ / НАВЫК',
+  trait: 'ЧЕРТА ХАРАКТЕРА',
+  baggage: 'БАГАЖ',
+  secret: 'СЕКРЕТНЫЙ ФАКТ',
+  actionCard: 'СПЕЦКАРТА ДЕЙСТВИЯ'
+};
 
 interface VideoGridProps {
   players: Record<string, Player>;
@@ -18,6 +29,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
   const [audioMuted, setAudioMuted] = useState(false);
   const [videoOff, setVideoOff] = useState(false);
+  const [inspected, setInspected] = useState<{ playerName: string; card: Card } | null>(null);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -136,10 +148,37 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
               isSelf={isSelf}
               localVideoRef={isSelf ? localVideoRef : undefined}
               remoteStream={!isSelf ? remoteStream : undefined}
+              onCardClick={(card) => setInspected({ playerName: player.name, card })}
             />
           );
         })}
       </div>
+
+      {/* Revealed-card detail popup — shows what a pill only had room to hint at */}
+      {inspected && (
+        <div
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
+          onClick={() => setInspected(null)}
+        >
+          <div
+            className="bg-slate-900 border border-amber-500/40 notch p-6 max-w-sm w-full shadow-2xl space-y-3 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setInspected(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400 uppercase tracking-widest">
+              <Eye className="w-3.5 h-3.5 text-emerald-400" />
+              {inspected.playerName} · раскрыл(а) {CARD_TYPE_LABELS[inspected.card.type]}
+            </div>
+            <h3 className="text-lg font-black text-amber-200 font-mono">{inspected.card.title}</h3>
+            <p className="text-sm text-slate-300 leading-relaxed font-sans">{inspected.card.description}</p>
+          </div>
+        </div>
+      )}
     </div>
 
   );
@@ -150,13 +189,15 @@ interface PlayerVideoCardProps {
   isSelf: boolean;
   localVideoRef?: React.RefObject<HTMLVideoElement>;
   remoteStream?: MediaStream;
+  onCardClick: (card: Card) => void;
 }
 
 const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
   player,
   isSelf,
   localVideoRef,
-  remoteStream
+  remoteStream,
+  onCardClick
 }) => {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -239,13 +280,18 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
         </div>
       </div>
 
-      {/* Revealed Cards Pills Overlay */}
+      {/* Revealed Cards Pills Overlay — click a pill to read the full card */}
       {player.cards && (
-        <div className="absolute bottom-10 left-2 right-2 flex flex-wrap gap-1 pointer-events-none max-h-12 overflow-hidden">
+        <div className="absolute bottom-10 left-2 right-2 flex flex-wrap gap-1 max-h-12 overflow-hidden">
           {Object.values(player.cards).filter(c => c && c.isRevealed && c.type !== 'actionCard').map(c => (
-            <span key={c.id} className="text-[9px] font-mono font-bold bg-amber-400/90 text-slate-950 px-1.5 py-0.5 notch-sm shadow-sm border border-amber-300/40 truncate max-w-[120px]">
+            <button
+              key={c.id}
+              onClick={(e) => { e.stopPropagation(); onCardClick(c); }}
+              title="Показать описание карты"
+              className="text-[9px] font-mono font-bold bg-amber-400/90 hover:bg-amber-300 text-slate-950 px-1.5 py-0.5 notch-sm shadow-sm border border-amber-300/40 truncate max-w-[120px] cursor-pointer transition-colors"
+            >
               {c.title}
-            </span>
+            </button>
           ))}
         </div>
       )}
