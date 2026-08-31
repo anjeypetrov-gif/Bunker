@@ -24,6 +24,7 @@ import {
 } from './icons';
 import { Card, CardType, Player, RoomState } from '../types/game';
 import { CharacterCards } from './CharacterCards';
+import { getCardArt } from '../data/cardArt';
 
 interface BottomControlBarProps {
   player: Player;
@@ -71,6 +72,7 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
   const [actionCardOpen, setActionCardOpen] = useState(false);
   const [actionTarget, setActionTarget] = useState<string | null>(null);
   const [dossierOpen, setDossierOpen] = useState(false);
+  const [artFailed, setArtFailed] = useState<Partial<Record<CardType, boolean>>>({});
 
   const isHost = room.hostId === currentSocketId;
   const canReveal = room.phase === 'CARD_REVEAL' && !player.isExiled && !player.revealedThisRound;
@@ -166,6 +168,8 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
             if (!card) return null;
             const config = CARD_MINI_CONFIG[key];
             const Icon = config.icon;
+            const art = getCardArt(key, card.title);
+            const showArt = art && !artFailed[key];
 
             return (
               <button
@@ -177,7 +181,16 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
                     : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-amber-500/50'
                 }`}
               >
-                <Icon className={`w-3.5 h-3.5 ${card.isRevealed ? 'text-emerald-400' : 'text-amber-400'}`} />
+                {showArt ? (
+                  <img
+                    src={art!}
+                    alt=""
+                    className="w-6 h-6 notch-sm object-cover shrink-0"
+                    onError={() => setArtFailed(prev => ({ ...prev, [key]: true }))}
+                  />
+                ) : (
+                  <Icon className={`w-3.5 h-3.5 ${card.isRevealed ? 'text-emerald-400' : 'text-amber-400'}`} />
+                )}
                 <div className="text-left">
                   <span className="text-[9px] text-slate-500 block font-sans font-bold leading-none">{config.label}</span>
                   <span className="font-bold truncate max-w-[90px] block leading-snug">{card.title}</span>
@@ -191,22 +204,35 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
             );
           })}
 
-          {actionCard && (
-            <button
-              onClick={() => setActionCardOpen(true)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 notch-sm border transition-all text-xs font-mono shrink-0 cursor-pointer ${
-                player.actionCardUsed
-                  ? 'bg-slate-900 border-slate-800 text-slate-600'
-                  : 'bg-amber-500/10 border-amber-500/50 text-amber-300 hover:bg-amber-500/20'
-              }`}
-            >
-              <ActionEffectIcon className="w-3.5 h-3.5" />
-              <div className="text-left">
-                <span className="text-[9px] text-slate-500 block font-sans font-bold leading-none">СПЕЦКАРТА</span>
-                <span className="font-bold truncate max-w-[90px] block leading-snug">{actionCard.title}</span>
-              </div>
-            </button>
-          )}
+          {actionCard && (() => {
+            const actionArt = getCardArt('actionCard', actionCard.title);
+            const showActionArt = actionArt && !artFailed.actionCard;
+            return (
+              <button
+                onClick={() => setActionCardOpen(true)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 notch-sm border transition-all text-xs font-mono shrink-0 cursor-pointer ${
+                  player.actionCardUsed
+                    ? 'bg-slate-900 border-slate-800 text-slate-600'
+                    : 'bg-amber-500/10 border-amber-500/50 text-amber-300 hover:bg-amber-500/20'
+                }`}
+              >
+                {showActionArt ? (
+                  <img
+                    src={actionArt!}
+                    alt=""
+                    className="w-6 h-6 notch-sm object-cover shrink-0"
+                    onError={() => setArtFailed(prev => ({ ...prev, actionCard: true }))}
+                  />
+                ) : (
+                  <ActionEffectIcon className="w-3.5 h-3.5" />
+                )}
+                <div className="text-left">
+                  <span className="text-[9px] text-slate-500 block font-sans font-bold leading-none">СПЕЦКАРТА</span>
+                  <span className="font-bold truncate max-w-[90px] block leading-snug">{actionCard.title}</span>
+                </div>
+              </button>
+            );
+          })()}
         </div>
 
         {/* Right: Host Controls & Next Phase Button */}
@@ -239,6 +265,21 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
             >
               ✕
             </button>
+
+            {(() => {
+              const art = getCardArt(selectedCardType, selectedCard.title);
+              const showArt = art && !artFailed[selectedCardType];
+              return showArt ? (
+                <div className="w-full aspect-square notch-sm bg-slate-950/60 border border-slate-800/80 overflow-hidden">
+                  <img
+                    src={art!}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    onError={() => setArtFailed(prev => ({ ...prev, [selectedCardType]: true }))}
+                  />
+                </div>
+              ) : null;
+            })()}
 
             <div className="flex items-center gap-2">
               <span className="p-2 notch-sm border border-amber-500/40 bg-amber-500/10">
@@ -302,6 +343,21 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
             >
               ✕
             </button>
+
+            {(() => {
+              const art = getCardArt('actionCard', actionCard.title);
+              const showArt = art && !artFailed.actionCard;
+              return showArt ? (
+                <div className="w-full aspect-square notch-sm bg-slate-950/60 border border-slate-800/80 overflow-hidden">
+                  <img
+                    src={art!}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    onError={() => setArtFailed(prev => ({ ...prev, actionCard: true }))}
+                  />
+                </div>
+              ) : null;
+            })()}
 
             <div className="flex items-center gap-2">
               <span className="p-2 notch-sm border border-amber-500/40 bg-amber-500/10">
