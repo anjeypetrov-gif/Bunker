@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import {
   RoomState,
   Player,
@@ -29,6 +30,18 @@ const REVEALABLE_CARD_TYPES: CardType[] = [
 
 export class GameEngine {
   private rooms: Record<string, RoomState> = {};
+
+  // Maps a private per-player session token (never sent to other clients,
+  // never part of RoomState/Player so it can't leak through room_updated
+  // broadcasts) to that player's current room + socket id. Lets a browser
+  // that reconnects (page refresh, brief network drop) re-attach to its
+  // existing player slot instead of being treated as a stranger and bounced
+  // back to the join screen.
+  private tokenMap: Record<string, { code: string; socketId: string }> = {};
+
+  private generateSessionToken(): string {
+    return randomUUID();
+  }
 
   private getRandomItem<T>(arr: T[]): T {
     return arr[Math.floor(Math.random() * arr.length)];
@@ -84,11 +97,12 @@ export class GameEngine {
       revealedThisRound: false,
       actionCardUsed: false,
       hasImmunity: false,
-      voteWeight: 1
+      voteWeight: 1,
+      isConnected: true
     };
   }
 
-  public createRoom(hostSocketId: string, hostName: string, hostAvatar: string): RoomState {
+  public createRoom(hostSocketId: string, hostName: string, hostAvatar: string): { room: RoomState; sessionToken: string } {
     let code = this.generateCode();
     while (this.rooms[code]) {
       code = this.generateCode();
@@ -121,10 +135,14 @@ export class GameEngine {
     };
 
     this.rooms[code] = room;
-    return room;
+
+    const sessionToken = this.generateSessionToken();
+    this.tokenMap[sessionToken] = { code, socketId: hostSocketId };
+
+    return { room, sessionToken };
   }
 
-  public joinRoom(code: string, socketId: string, name: string, avatar: string): RoomState | null {
+  public joinRoom(code: string, socketId: string, name: string, avatar: string): { room: RoomState; sessionToken: string } | null {
     const room = this.rooms[code.toUpperCase()];
     if (!room) return null;
     if (Object.keys(room.players).length >= room.maxPlayers) return null;
@@ -144,10 +162,81 @@ export class GameEngine {
     room.bunkerCapacity = Math.max(1, Math.floor(Object.keys(room.players).length / 2));
 
     this.addSystemMessage(room, `${newPlayer.name} присоединился к убежищу.`);
-    return room;
+
+    const sessionToken = this.generateSessionToken();
+    this.tokenMap[sessionToken] = { code: room.code, socketId };
+
+    return { room, sessionToken };
+  }
+
+  // Marks a player as temporarily offline (socket disconnected) WITHOUT
+  // removing them from the room yet — gives the browser a window to
+  // reconnect (page refresh, brief network drop) via reconnectPlayer()
+  // before the caller falls back to actually removing them with leaveRoom().
+  public markDisconnected(socketId: string): { room: RoomState; code: string } | null {
+    for (const code in this.rooms) {
+      const room = this.rooms[code];
+      const player = room.players[socketId];
+      if (player) {
+        player.isConnected = false;
+        return { room, code };
+      }
+    }
+    return null;
+  }
+
+  // Re-attaches a reconnecting browser (identified by its private session
+  // token) to its existing player slot under the new socket id, migrating
+  // every place the old socket id was referenced (map key, host id, turn
+  // order, votes, last-exiled marker). Returns the previous socket id too,
+  // so the caller can cancel any pending grace-period removal timer for it.
+  public reconnectPlayer(code: string, sessionToken: string, newSocketId: string): { room: RoomState; previousSocketId: string } | null {
+    const entry = this.tokenMap[sessionToken];
+    if (!entry || entry.code !== code.toUpperCase()) return null;
+
+    const room = this.rooms[entry.code];
+    if (!room) {
+      delete this.tokenMap[sessionToken];
+      return null;
+    }
+
+    const oldSocketId = entry.socketId;
+    const player = room.players[oldSocketId];
+    if (!player) {
+      delete this.tokenMap[sessionToken];
+      return null;
+    }
+
+    if (oldSocketId !== newSocketId) {
+      delete room.players[oldSocketId];
+      player.id = newSocketId;
+      player.socketId = newSocketId;
+      room.players[newSocketId] = player;
+
+      room.turnOrder = room.turnOrder.map(id => (id === oldSocketId ? newSocketId : id));
+      if (room.hostId === oldSocketId) room.hostId = newSocketId;
+      if (room.lastExiledPlayerId === oldSocketId) room.lastExiledPlayerId = newSocketId;
+
+      const remappedVotes: Record<string, string> = {};
+      Object.entries(room.votes).forEach(([voterId, targetId]) => {
+        const v = voterId === oldSocketId ? newSocketId : voterId;
+        const t = targetId === oldSocketId ? newSocketId : targetId;
+        remappedVotes[v] = t;
+      });
+      room.votes = remappedVotes;
+
+      entry.socketId = newSocketId;
+    }
+
+    player.isConnected = true;
+    return { room, previousSocketId: oldSocketId };
   }
 
   public leaveRoom(socketId: string): { room: RoomState | null; code: string | null } {
+    for (const token in this.tokenMap) {
+      if (this.tokenMap[token].socketId === socketId) delete this.tokenMap[token];
+    }
+
     for (const code in this.rooms) {
       const room = this.rooms[code];
       if (room.players[socketId]) {

@@ -52,7 +52,8 @@ export class BotManager {
       revealedThisRound: false,
       actionCardUsed: false,
       hasImmunity: false,
-      voteWeight: 1
+      voteWeight: 1,
+      isConnected: true
     };
 
     room.players[botId] = botPlayer;

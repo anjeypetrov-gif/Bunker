@@ -264,6 +264,16 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
         </div>
       )}
 
+      {/* Reconnecting Overlay — player's socket dropped (refresh / brief
+          network blip); their slot and cards are kept warm server-side for
+          a short grace window rather than removing them immediately. */}
+      {!player.isConnected && !player.isExiled && (
+        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm flex flex-col items-center justify-center text-amber-300 font-bold">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping mb-2" />
+          <span className="text-[11px] uppercase tracking-widest font-black">ПЕРЕПОДКЛЮЧЕНИЕ...</span>
+        </div>
+      )}
+
       {/* Top badges */}
       <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none">
         <div className="flex items-center gap-1">

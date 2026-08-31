@@ -43,6 +43,7 @@ export interface Player {
   actionCardUsed: boolean;
   hasImmunity: boolean;
   voteWeight: number;
+  isConnected: boolean;
 }
 
 export interface Catastrophe {

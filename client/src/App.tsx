@@ -8,15 +8,43 @@ import { ChatPanel } from './components/ChatPanel';
 import { VotingModal } from './components/VotingModal';
 import { GameOver } from './components/GameOver';
 import { BottomControlBar } from './components/BottomControlBar';
+import { Shield } from './components/icons';
+import { saveSession, loadSession, clearSession } from './utils/session';
 
 export const App: React.FC = () => {
   const [room, setRoom] = useState<RoomState | null>(null);
   const [socketId, setSocketId] = useState<string>('');
+  // Gates the very first render behind an attempted reconnect, so a page
+  // refresh mid-game doesn't flash the join screen before snapping back.
+  const [restoring, setRestoring] = useState<boolean>(() => !!loadSession());
 
   useEffect(() => {
-    socket.on('connect', () => {
+    const handleConnect = () => {
       setSocketId(socket.id || '');
-    });
+
+      const session = loadSession();
+      if (!session) {
+        setRestoring(false);
+        return;
+      }
+
+      // Fires on the very first connect AND every automatic reconnect
+      // (page refresh = new socket entirely, brief network drop = same
+      // socket instance gets a new id) — both cases need to re-attach to
+      // the existing player slot the same way.
+      socket.emit('rejoin_room', session, (res: any) => {
+        if (res?.success) {
+          setRoom(res.room);
+        } else {
+          // Room is gone, or the grace window already expired — nothing to
+          // rejoin, fall back to the ordinary join screen.
+          clearSession();
+        }
+        setRestoring(false);
+      });
+    };
+
+    socket.on('connect', handleConnect);
 
     socket.on('room_updated', (updatedRoom: RoomState) => {
       setRoom(updatedRoom);
@@ -27,7 +55,7 @@ export const App: React.FC = () => {
     });
 
     return () => {
-      socket.off('connect');
+      socket.off('connect', handleConnect);
       socket.off('room_updated');
       socket.off('game_started');
     };
@@ -37,6 +65,7 @@ export const App: React.FC = () => {
     socket.emit('create_room', { name, avatar }, (res: any) => {
       if (res.success) {
         setRoom(res.room);
+        saveSession(res.room.code, res.sessionToken);
       }
     });
   };
@@ -45,6 +74,7 @@ export const App: React.FC = () => {
     socket.emit('join_room', { code, name, avatar }, (res: any) => {
       if (res.success) {
         setRoom(res.room);
+        saveSession(res.room.code, res.sessionToken);
       } else {
         alert(res.message || 'Ошибка подключения');
       }
@@ -121,6 +151,17 @@ export const App: React.FC = () => {
   const currentPlayer = room?.players[currentSocketId];
 
   // Screen routing
+  if (restoring) {
+    return (
+      <div className="min-h-screen bg-[#0b0e14] text-slate-100 flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-3 text-slate-400 font-mono text-sm">
+          <Shield className="w-8 h-8 text-amber-400 animate-pulse" />
+          <span>ВОССТАНОВЛЕНИЕ СЕССИИ...</span>
+        </div>
+      </div>
+    );
+  }
+
   if (!room || room.phase === 'LOBBY') {
     return (
       <div className="min-h-screen bg-[#0b0e14] text-slate-100 p-4">
