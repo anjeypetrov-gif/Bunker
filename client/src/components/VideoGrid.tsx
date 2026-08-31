@@ -3,6 +3,7 @@ import { Mic, MicOff, Video, VideoOff, Skull, Crown, ShieldCheck, Eye, X } from 
 import { Card, CardType, Player } from '../types/game';
 import { webRTCManager } from '../services/webrtc';
 import { socket } from '../services/socket';
+import { getCardArt } from '../data/cardArt';
 
 const CARD_TYPE_LABELS: Record<CardType, string> = {
   profession: 'ПРОФЕССИЯ',
@@ -30,6 +31,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
   const [audioMuted, setAudioMuted] = useState(false);
   const [videoOff, setVideoOff] = useState(false);
   const [inspected, setInspected] = useState<{ playerName: string; card: Card } | null>(null);
+  const [inspectedArtFailed, setInspectedArtFailed] = useState<Record<string, boolean>>({});
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -170,6 +172,17 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
             >
               <X className="w-4 h-4" />
             </button>
+            {(() => {
+              const art = getCardArt(inspected.card.type, inspected.card.title);
+              return art && !inspectedArtFailed[inspected.card.id] ? (
+                <img
+                  src={art}
+                  alt=""
+                  className="w-full aspect-square object-cover notch-sm border border-slate-800"
+                  onError={() => setInspectedArtFailed(prev => ({ ...prev, [inspected.card.id]: true }))}
+                />
+              ) : null;
+            })()}
             <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400 uppercase tracking-widest">
               <Eye className="w-3.5 h-3.5 text-emerald-400" />
               {inspected.playerName} · раскрыл(а) {CARD_TYPE_LABELS[inspected.card.type]}

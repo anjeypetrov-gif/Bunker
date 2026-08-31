@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Briefcase, HeartPulse, User, Smile, ShieldAlert, Package, Key, Sparkles, Eye, Lock, X } from './icons';
 import { Card, CardType, Player } from '../types/game';
+import { getCardArt } from '../data/cardArt';
 
 interface CharacterCardsProps {
   player: Player;
@@ -37,6 +38,8 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
   onClose,
   canReveal
 }) => {
+  const [artFailed, setArtFailed] = useState<Partial<Record<CardType, boolean>>>({});
+
   if (!player || !player.cards) return null;
 
   const cardKeys: CardType[] = ['profession', 'health', 'biology', 'hobby', 'trait', 'baggage', 'secret', 'actionCard'];
@@ -96,6 +99,8 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
             const Icon = CARD_ICONS[key];
             const isActionCard = key === 'actionCard';
             const locked = !card.isRevealed;
+            const art = getCardArt(key, card.title);
+            const showArt = art && !artFailed[key];
 
             return (
               <div
@@ -124,8 +129,17 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
                     )}
                   </div>
 
-                  <div className="w-full h-16 notch-sm bg-slate-950/60 border border-slate-800/80 flex items-center justify-center mb-3 relative overflow-hidden">
-                    <Icon className={`w-8 h-8 ${locked ? 'text-slate-500' : 'text-amber-300'} opacity-90 group-hover:scale-110 transition-transform`} />
+                  <div className={`w-full notch-sm bg-slate-950/60 border border-slate-800/80 flex items-center justify-center mb-3 relative overflow-hidden ${showArt ? 'aspect-square' : 'h-16'}`}>
+                    {showArt ? (
+                      <img
+                        src={art!}
+                        alt=""
+                        className={`w-full h-full object-cover ${locked ? 'opacity-60 grayscale-[35%]' : ''}`}
+                        onError={() => setArtFailed(prev => ({ ...prev, [key]: true }))}
+                      />
+                    ) : (
+                      <Icon className={`w-8 h-8 ${locked ? 'text-slate-500' : 'text-amber-300'} opacity-90 group-hover:scale-110 transition-transform`} />
+                    )}
                   </div>
 
                   {/* Owners always see their own card content — isRevealed only controls
