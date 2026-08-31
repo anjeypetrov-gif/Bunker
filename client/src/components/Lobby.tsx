@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Play, Users, LogIn, Bot } from './icons';
+import { Shield, Play, Users, LogIn, Bot, LogOut } from './icons';
 import { RoomState } from '../types/game';
 
 interface LobbyProps {
@@ -9,6 +9,7 @@ interface LobbyProps {
   onUpdateSettings: (settings: { maxPlayers?: number; turnDuration?: number }) => void;
   onAddBot?: () => void;
   onFillBots?: () => void;
+  onLeaveGame?: () => void;
   room: RoomState | null;
   currentSocketId: string;
 }
@@ -29,6 +30,7 @@ export const Lobby: React.FC<LobbyProps> = ({
   onUpdateSettings,
   onAddBot,
   onFillBots,
+  onLeaveGame,
   room,
   currentSocketId
 }) => {
@@ -52,9 +54,23 @@ export const Lobby: React.FC<LobbyProps> = ({
               <p className="text-xs text-slate-400 font-mono">КОД КОМНАТЫ: <span className="text-amber-400 font-bold text-base px-2 py-0.5 bg-amber-500/10 border border-amber-500/30 notch-sm">{room.code}</span></p>
             </div>
           </div>
-          <div className="text-right">
-            <span className="text-xs text-slate-400 block font-mono">ВМЕСТИМОСТЬ БУНКЕРА</span>
-            <span className="text-lg font-bold text-emerald-400 font-mono">{room.bunkerCapacity} из {playersCount} МЕСТ</span>
+          <div className="flex items-start gap-4">
+            <div className="text-right">
+              <span className="text-xs text-slate-400 block font-mono">ВМЕСТИМОСТЬ БУНКЕРА</span>
+              <span className="text-lg font-bold text-emerald-400 font-mono">{room.bunkerCapacity} из {playersCount} МЕСТ</span>
+            </div>
+            {onLeaveGame && (
+              <button
+                onClick={() => {
+                  if (window.confirm('Покинуть комнату?')) onLeaveGame();
+                }}
+                className="p-2.5 notch-sm border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 flex items-center gap-1.5 text-xs font-mono font-bold transition-all cursor-pointer shrink-0"
+                title="Выйти из игры"
+              >
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">ВЫЙТИ</span>
+              </button>
+            )}
           </div>
         </div>
 

@@ -147,6 +147,14 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleLeaveGame = () => {
+    if (room) {
+      socket.emit('leave_room', { code: room.code });
+    }
+    clearSession();
+    setRoom(null);
+  };
+
   const currentSocketId = socketId || socket.id || '';
   const currentPlayer = room?.players[currentSocketId];
 
@@ -172,6 +180,7 @@ export const App: React.FC = () => {
           onUpdateSettings={handleUpdateSettings}
           onAddBot={handleAddBot}
           onFillBots={handleFillBots}
+          onLeaveGame={handleLeaveGame}
           room={room}
           currentSocketId={currentSocketId}
         />
@@ -226,6 +235,7 @@ export const App: React.FC = () => {
           onUseActionCard={handleUseActionCard}
           onToggleMedia={handleToggleMedia}
           onAdvancePhase={handleAdvancePhase}
+          onLeaveGame={handleLeaveGame}
         />
       )}
 

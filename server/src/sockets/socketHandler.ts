@@ -67,6 +67,26 @@ export function registerSocketHandlers(io: Server, gameEngine: GameEngine) {
       io.to(room.code).emit('room_updated', room);
     });
 
+    // Leave Room — an intentional exit (the player clicked "Leave"), unlike
+    // a disconnect: remove them immediately, no reconnect grace period.
+    socket.on('leave_room', ({ code }) => {
+      const pending = disconnectTimers.get(socket.id);
+      if (pending) {
+        clearTimeout(pending);
+        disconnectTimers.delete(socket.id);
+      }
+
+      const result = gameEngine.leaveRoom(socket.id);
+      socket.leave(code);
+
+      if (result.code) {
+        socket.to(result.code).emit('user_left_webrtc', { socketId: socket.id });
+        if (result.room) {
+          io.to(result.code).emit('room_updated', result.room);
+        }
+      }
+    });
+
     // Add Single Bot (Host control)
     socket.on('add_bot', ({ code }) => {
       const room = gameEngine.getRoom(code);

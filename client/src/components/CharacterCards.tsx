@@ -8,6 +8,8 @@ interface CharacterCardsProps {
   onRevealCard: (cardType: CardType) => void;
   onClose: () => void;
   canReveal: boolean;
+  onOpenActionCard?: () => void;
+  actionUsable?: boolean;
 }
 
 const CARD_ICONS: Record<CardType, any> = {
@@ -36,7 +38,9 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
   player,
   onRevealCard,
   onClose,
-  canReveal
+  canReveal,
+  onOpenActionCard,
+  actionUsable
 }) => {
   const [artFailed, setArtFailed] = useState<Partial<Record<CardType, boolean>>>({});
 
@@ -174,8 +178,24 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
                 )}
 
                 {isActionCard && (
-                  <div className="mt-4 pt-3 border-t border-slate-800/60 text-center py-1.5 text-[11px] font-mono notch-sm border border-amber-500/20 bg-amber-500/10 text-amber-300">
-                    {player.actionCardUsed ? 'КАРТА УЖЕ ИСПОЛЬЗОВАНА' : 'ИСПОЛЬЗУЕТСЯ ИЗ ПАНЕЛИ УПРАВЛЕНИЯ'}
+                  <div className="mt-4 pt-3 border-t border-slate-800/60">
+                    {player.actionCardUsed ? (
+                      <div className="text-center py-1.5 text-[11px] font-mono notch-sm border border-slate-800 text-slate-500">
+                        КАРТА УЖЕ ИСПОЛЬЗОВАНА
+                      </div>
+                    ) : onOpenActionCard ? (
+                      <button
+                        disabled={!actionUsable}
+                        onClick={onOpenActionCard}
+                        className={`w-full py-2 px-3 notch-sm text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-md ${
+                          actionUsable
+                            ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-black shadow-amber-500/20 cursor-pointer active:scale-98'
+                            : 'bg-slate-800/80 text-slate-500 border border-slate-700/60 cursor-not-allowed'
+                        }`}
+                      >
+                        <Sparkles className="w-4 h-4" /> {actionUsable ? 'ИСПОЛЬЗОВАТЬ КАРТУ' : 'НЕДОСТУПНО В ЭТОЙ ФАЗЕ'}
+                      </button>
+                    ) : null}
                   </div>
                 )}
               </div>
