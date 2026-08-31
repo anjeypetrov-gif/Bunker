@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: bunker-online
+    env: node
+    plan: free
+    buildCommand: npm run install:all && npm run build
+    startCommand: npm run start:server
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
