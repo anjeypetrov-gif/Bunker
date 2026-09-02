@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Mic, MicOff, Video, VideoOff, Skull, Crown, ShieldCheck, Eye, X } from './icons';
 import { Card, CardType, Player } from '../types/game';
 import { webRTCManager } from '../services/webrtc';
@@ -156,8 +157,11 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
         })}
       </div>
 
-      {/* Revealed-card detail popup — shows what a pill only had room to hint at */}
-      {inspected && (
+      {/* Revealed-card detail popup — shows what a pill only had room to hint at.
+          Rendered through a portal straight into <body>: this panel's own
+          notch (clip-path) would otherwise visually clip a "fixed" child to
+          the panel's box instead of the full viewport. */}
+      {inspected && createPortal(
         <div
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
           onClick={() => setInspected(null)}
@@ -190,7 +194,8 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
             <h3 className="text-lg font-black text-amber-200 font-mono">{inspected.card.title}</h3>
             <p className="text-sm text-slate-300 leading-relaxed font-sans">{inspected.card.description}</p>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
 
