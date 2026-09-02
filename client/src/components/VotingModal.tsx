@@ -23,7 +23,7 @@ export const VotingModal: React.FC<VotingModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 notch max-w-lg w-full p-6 shadow-2xl space-y-5">
+      <div className="bg-slate-900 border border-slate-800 notch max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-5">
         <div className="text-center space-y-2 border-b border-slate-800 pb-4">
           <div className="inline-flex p-3 bg-red-500/10 border border-red-500/30 notch-sm text-red-500 mb-1">
             <Vote className="w-8 h-8" />

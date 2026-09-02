@@ -163,7 +163,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
           onClick={() => setInspected(null)}
         >
           <div
-            className="bg-slate-900 border border-amber-500/40 notch p-6 max-w-sm w-full shadow-2xl space-y-3 relative"
+            className="bg-slate-900 border border-amber-500/40 notch p-6 max-w-sm w-full max-h-[90vh] overflow-y-auto shadow-2xl space-y-3 relative"
             onClick={(e) => e.stopPropagation()}
           >
             <button

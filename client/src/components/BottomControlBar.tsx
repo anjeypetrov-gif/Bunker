@@ -179,7 +179,7 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
       {/* Action Card Use Modal */}
       {actionCardOpen && actionCard && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-amber-500/40 notch p-6 max-w-sm w-full shadow-2xl space-y-4 relative">
+          <div className="bg-slate-900 border border-amber-500/40 notch p-6 max-w-sm w-full max-h-[90vh] overflow-y-auto shadow-2xl space-y-4 relative">
             <button
               onClick={() => { setActionCardOpen(false); setActionTarget(null); }}
               className="absolute top-4 right-4 text-slate-400 hover:text-white font-mono text-sm font-bold p-1 cursor-pointer"
