@@ -90,6 +90,15 @@ const SECRET: Record<string, string> = {
   'Знает инженерный план бункера': 'secret-znaet-inzhenernyy-plan-bunkera.png',
 };
 
+// NOTE (02.09): these 5 files are temporary placeholders — the real
+// action-card illustrations from Gemini never arrived in full resolution
+// (only tiny preview icons inside a shared contact sheet, see project
+// notes), so each filename below currently holds a COPY of a thematically
+// close image from another category (optimism → second chance, leadership
+// → double vote, a profession icon → profession swap, surgical kit →
+// health check, secret immunity → round immunity). Drop the real
+// full-resolution art into these exact filenames whenever it's ready —
+// no code change needed, same as the rest of this table.
 const ACTION: Record<string, string> = {
   'Второй шанс': 'action-vtoroy-shans.png',
   'Удвоение голоса': 'action-udvoenie-golosa.png',
@@ -104,7 +113,7 @@ const BIOLOGY: Array<{ sex: string; age: number; file: string }> = [
   { sex: 'Мужчина', age: 24, file: 'biology-muzhchina-24.png' },
   { sex: 'Женщина', age: 26, file: 'biology-zhenshchina-26.png' },
   { sex: 'Мужчина', age: 35, file: 'biology-muzhchina-35.png' },
-  { sex: 'Женщина', age: 29, file: 'biology-zhenshchina-29.png' },
+  { sex: 'Женщина', age: 29, file: 'biology-zhenshchina-29.png' }, // placeholder (02.09): copy of the 26-year-old portrait, closest age match — swap in real art whenever it arrives
   { sex: 'Мужчина', age: 42, file: 'biology-muzhchina-42.png' },
   { sex: 'Женщина', age: 38, file: 'biology-zhenshchina-38-mat.png' },
   { sex: 'Мужчина', age: 19, file: 'biology-muzhchina-19.png' },
