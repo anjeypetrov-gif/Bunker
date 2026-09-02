@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Home, Clock, ArrowRight, ShieldAlert } from './icons';
+import { AlertTriangle, Home, Clock, ArrowRight, ShieldAlert, ChevronDown, ChevronUp } from './icons';
 import { RoomState } from '../types/game';
 
 interface ShelterInfoProps {
@@ -14,6 +14,13 @@ export const ShelterInfo: React.FC<ShelterInfoProps> = ({
   onAdvancePhase
 }) => {
   const [timeLeft, setTimeLeft] = useState(room.turnDuration);
+  // Full catastrophe/shelter text is the point of the INTRO phase, but on a
+  // phone this panel alone could push the camera grid and controls below
+  // it clean off the screen every single round. Expanded by default only
+  // for the initial briefing; collapsible afterwards so it doesn't eat the
+  // viewport, and can still be reopened any time (e.g. to re-check bunker
+  // capacity) via the toggle.
+  const [detailsOpen, setDetailsOpen] = useState(room.phase === 'INTRO');
 
   useEffect(() => {
     setTimeLeft(room.turnDuration);
@@ -22,6 +29,10 @@ export const ShelterInfo: React.FC<ShelterInfoProps> = ({
     }, 1000);
     return () => clearInterval(interval);
   }, [room.phase, room.currentRound, room.turnDuration]);
+
+  useEffect(() => {
+    if (room.phase === 'INTRO') setDetailsOpen(true);
+  }, [room.phase]);
 
   const isHost = room.hostId === currentSocketId;
   const activePlayers = Object.values(room.players).filter(p => !p.isExiled);
@@ -54,10 +65,11 @@ export const ShelterInfo: React.FC<ShelterInfoProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center flex-wrap justify-center gap-2 sm:gap-4">
           {room.phase === 'CARD_REVEAL' && (
             <div className="flex items-center gap-2 font-mono bg-slate-900 px-3 py-1.5 notch-sm border border-slate-800 text-xs text-slate-300">
-              <span>ОТКРЫТО КАРТ:</span>
+              <span className="hidden sm:inline">ОТКРЫТО КАРТ:</span>
+              <span className="sm:hidden">КАРТ:</span>
               <span className="text-amber-400 font-bold">{revealedCount} / {totalActive}</span>
             </div>
           )}
@@ -81,36 +93,61 @@ export const ShelterInfo: React.FC<ShelterInfoProps> = ({
         </div>
       </div>
 
-      {/* Catastrophe & Shelter Detail Row */}
+      {/* Catastrophe & Shelter — compact summary always visible, full text
+          collapsible. Keeping the full paragraphs expanded every round was
+          fine on desktop but on a phone this section alone could push the
+          camera grid and controls below it clean off the screen. */}
       {room.catastrophe && room.shelter && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
-          {/* Catastrophe Card */}
-          <div className="bg-red-950/20 border border-red-900/40 p-3 notch-sm space-y-1">
-            <div className="flex items-center gap-2 text-red-400 font-bold uppercase tracking-wider">
-              <AlertTriangle className="w-4 h-4" /> КАТАСТРОФА: {room.catastrophe.title}
-            </div>
-            <p className="text-slate-300 leading-relaxed font-sans">{room.catastrophe.description}</p>
-            <div className="flex items-center gap-4 text-[11px] text-slate-400 pt-1">
-              <span>Разрушения: <strong className="text-red-400">{room.catastrophe.destructionPercent}%</strong></span>
-              <span>Выжило: <strong className="text-amber-400">{room.catastrophe.survivorsPercent}%</strong></span>
-              <span>Срок изол.: <strong className="text-amber-400">{room.catastrophe.durationYears} лет</strong></span>
-            </div>
-          </div>
-
-          {/* Shelter Card */}
-          <div className="bg-emerald-950/20 border border-emerald-900/40 p-3 notch-sm space-y-1">
-            <div className="flex items-center justify-between text-emerald-400 font-bold uppercase tracking-wider">
-              <span className="flex items-center gap-2"><Home className="w-4 h-4" /> БУНКЕР: {room.shelter.title}</span>
-              <span className="text-xs bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 px-2 py-0.5 notch-sm">
-                МЕСТ: {room.bunkerCapacity}
+        <div className="space-y-2">
+          <button
+            onClick={() => setDetailsOpen(o => !o)}
+            className="w-full flex items-center justify-between gap-3 bg-slate-950/60 hover:bg-slate-950/90 p-2.5 notch-sm border border-slate-800 text-xs font-mono transition-colors cursor-pointer"
+          >
+            <span className="flex items-center gap-3 min-w-0 flex-wrap">
+              <span className="flex items-center gap-1.5 text-red-400 font-bold shrink-0">
+                <AlertTriangle className="w-3.5 h-3.5" /> {room.catastrophe.title}
               </span>
+              <span className="flex items-center gap-1.5 text-emerald-400 font-bold shrink-0">
+                <Home className="w-3.5 h-3.5" /> {room.shelter.title} · МЕСТ: {room.bunkerCapacity}
+              </span>
+            </span>
+            <span className="flex items-center gap-1.5 text-slate-400 shrink-0">
+              <span className="hidden sm:inline">{detailsOpen ? 'СВЕРНУТЬ' : 'ПОДРОБНЕЕ'}</span>
+              {detailsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </span>
+          </button>
+
+          {detailsOpen && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono max-h-[40vh] overflow-y-auto">
+              {/* Catastrophe Card */}
+              <div className="bg-red-950/20 border border-red-900/40 p-3 notch-sm space-y-1">
+                <div className="flex items-center gap-2 text-red-400 font-bold uppercase tracking-wider">
+                  <AlertTriangle className="w-4 h-4" /> КАТАСТРОФА: {room.catastrophe.title}
+                </div>
+                <p className="text-slate-300 leading-relaxed font-sans">{room.catastrophe.description}</p>
+                <div className="flex items-center gap-4 text-[11px] text-slate-400 pt-1">
+                  <span>Разрушения: <strong className="text-red-400">{room.catastrophe.destructionPercent}%</strong></span>
+                  <span>Выжило: <strong className="text-amber-400">{room.catastrophe.survivorsPercent}%</strong></span>
+                  <span>Срок изол.: <strong className="text-amber-400">{room.catastrophe.durationYears} лет</strong></span>
+                </div>
+              </div>
+
+              {/* Shelter Card */}
+              <div className="bg-emerald-950/20 border border-emerald-900/40 p-3 notch-sm space-y-1">
+                <div className="flex items-center justify-between text-emerald-400 font-bold uppercase tracking-wider">
+                  <span className="flex items-center gap-2"><Home className="w-4 h-4" /> БУНКЕР: {room.shelter.title}</span>
+                  <span className="text-xs bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 px-2 py-0.5 notch-sm">
+                    МЕСТ: {room.bunkerCapacity}
+                  </span>
+                </div>
+                <p className="text-slate-300 leading-relaxed font-sans">{room.shelter.description}</p>
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 pt-1">
+                  <span>Оснащение: <strong className="text-emerald-300">{room.shelter.equipment.slice(0, 2).join(', ')}</strong></span>
+                  <span>Осталось в живых: <strong className="text-white font-bold">{activePlayers.length}</strong></span>
+                </div>
+              </div>
             </div>
-            <p className="text-slate-300 leading-relaxed font-sans">{room.shelter.description}</p>
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 pt-1">
-              <span>Оснащение: <strong className="text-emerald-300">{room.shelter.equipment.slice(0, 2).join(', ')}</strong></span>
-              <span>Осталось в живых: <strong className="text-white font-bold">{activePlayers.length}</strong></span>
-            </div>
-          </div>
+          )}
         </div>
       )}
     </div>
