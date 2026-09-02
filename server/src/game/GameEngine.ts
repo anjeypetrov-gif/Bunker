@@ -17,6 +17,7 @@ import {
   TRAITS,
   BAGGAGES,
   SECRET_FACTS,
+  CONDITIONS,
   ACTION_CARDS,
   SPECIAL_ROLES
 } from '../data/decks';
@@ -25,8 +26,18 @@ import {
 // The action card is handled separately through useActionCard() and does
 // not count against the "one reveal per round" limit.
 const REVEALABLE_CARD_TYPES: CardType[] = [
-  'profession', 'health', 'biology', 'hobby', 'trait', 'baggage', 'secret'
+  'profession', 'health', 'biology', 'hobby', 'trait', 'baggage', 'secret', 'condition'
 ];
+
+// Grammatically correct "N год/года/лет" for the profession card's
+// randomly-rolled work experience (1..24 years).
+function formatYears(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${n} год`;
+  if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return `${n} года`;
+  return `${n} лет`;
+}
 
 export class GameEngine {
   private rooms: Record<string, RoomState> = {};
@@ -305,6 +316,7 @@ export class GameEngine {
     const pickTrait = this.createDeckPicker(TRAITS);
     const pickBaggage = this.createDeckPicker(BAGGAGES);
     const pickSecret = this.createDeckPicker(SECRET_FACTS);
+    const pickCondition = this.createDeckPicker(CONDITIONS);
     const pickActionCard = this.createDeckPicker(ACTION_CARDS);
 
     playerIds.forEach(id => {
@@ -334,16 +346,23 @@ export class GameEngine {
       const trait = pickTrait();
       const baggage = pickBaggage();
       const secret = pickSecret();
+      const condition = pickCondition();
       const actCard = pickActionCard();
 
+      // Стаж работы (1..24 года) — прибавляется к описанию профессии как
+      // отдельная, но неразрывно связанная с ней характеристика.
+      const stagYears = 1 + Math.floor(Math.random() * 24);
+      const professionDesc = `${prof.desc} Стаж: ${formatYears(stagYears)}.`;
+
       p.cards = {
-        profession: { id: `prof-${id}`, type: 'profession', title: prof.title, description: prof.desc, isRevealed: false },
+        profession: { id: `prof-${id}`, type: 'profession', title: prof.title, description: professionDesc, isRevealed: false },
         health: { id: `health-${id}`, type: 'health', title: health.title, description: health.desc, isRevealed: false },
         biology: { id: `bio-${id}`, type: 'biology', title: `${bio.sex}, ${bio.age} лет`, description: bio.fertility, isRevealed: false },
         hobby: { id: `hobby-${id}`, type: 'hobby', title: hobby.title, description: hobby.desc, isRevealed: false },
         trait: { id: `trait-${id}`, type: 'trait', title: trait.title, description: trait.desc, isRevealed: false },
         baggage: { id: `baggage-${id}`, type: 'baggage', title: baggage.title, description: baggage.desc, isRevealed: false },
         secret: { id: `secret-${id}`, type: 'secret', title: secret.title, description: secret.desc, isRevealed: false },
+        condition: { id: `cond-${id}`, type: 'condition', title: condition.title, description: condition.desc, isRevealed: false },
         actionCard: { id: `act-${id}`, type: 'actionCard', title: actCard.title, description: actCard.desc, isRevealed: false, meta: { effect: actCard.effect } }
       };
 
@@ -375,19 +394,44 @@ export class GameEngine {
     if (room.phase === 'INTRO') {
       room.phase = 'CARD_REVEAL';
       this.resetRoundFlags(room);
-      this.addSystemMessage(room, `Раунд 1. Каждому выжившему необходимо открыть одну из своих характеристик.`);
+
+      if (room.currentRound === 1) {
+        // Вводный раунд: голосования не будет, поэтому профессия каждого
+        // выжившего раскрывается сразу и автоматически — это ознакомительный
+        // раунд, а не проверка на изгнание.
+        const activePlayers = Object.values(room.players).filter(p => !p.isExiled);
+        activePlayers.forEach(p => {
+          if (p.cards.profession && !p.cards.profession.isRevealed) {
+            p.cards.profession.isRevealed = true;
+          }
+          p.revealedThisRound = true;
+        });
+        room.revealedCountInRound = activePlayers.length;
+        this.addSystemMessage(room, `Раунд 1 — вступительный. Карты профессий всех выживших открыты автоматически, голосования в этом раунде не будет.`);
+      } else {
+        this.addSystemMessage(room, `Раунд ${room.currentRound}. Каждому выжившему необходимо открыть одну из своих характеристик.`);
+      }
     } else if (room.phase === 'CARD_REVEAL') {
       room.phase = 'DISCUSSION';
       this.addSystemMessage(room, `Фаза обсуждения! Убедите группу в своей полезности для бункера.`);
     } else if (room.phase === 'DISCUSSION') {
-      room.phase = 'VOTING';
-      room.votes = {};
-      Object.values(room.players).forEach(p => {
-        p.hasVoted = false;
-        p.votesCount = 0;
-        p.voteWeight = 1;
-      });
-      this.addSystemMessage(room, `Фаза голосования! Проголосуйте за игрока, которого вы хотите изгнать из бункера.`);
+      if (room.currentRound === 1) {
+        // Первый раунд ознакомительный — пропускаем голосование и изгнание,
+        // сразу переходим к раскрытию карт второго раунда.
+        room.currentRound += 1;
+        room.phase = 'CARD_REVEAL';
+        this.resetRoundFlags(room);
+        this.addSystemMessage(room, `Первый раунд был вступительным — никто не изгнан. Раунд ${room.currentRound}. Откройте следующую характеристику своего персонажа.`);
+      } else {
+        room.phase = 'VOTING';
+        room.votes = {};
+        Object.values(room.players).forEach(p => {
+          p.hasVoted = false;
+          p.votesCount = 0;
+          p.voteWeight = 1;
+        });
+        this.addSystemMessage(room, `Фаза голосования! Проголосуйте за игрока, которого вы хотите изгнать из бункера.`);
+      }
     } else if (room.phase === 'VOTE_RESULTS') {
       const activePlayers = Object.values(room.players).filter(p => !p.isExiled);
       if (activePlayers.length <= room.bunkerCapacity) {

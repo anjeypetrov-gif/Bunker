@@ -1,11 +1,12 @@
-export type CardType = 
-  | 'profession' 
-  | 'health' 
-  | 'biology' 
-  | 'hobby' 
-  | 'trait' 
-  | 'baggage' 
-  | 'secret' 
+export type CardType =
+  | 'profession'
+  | 'health'
+  | 'biology'
+  | 'hobby'
+  | 'trait'
+  | 'baggage'
+  | 'secret'
+  | 'condition'
   | 'actionCard';
 
 export interface Card {

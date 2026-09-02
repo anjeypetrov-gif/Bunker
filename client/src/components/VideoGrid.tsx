@@ -14,6 +14,7 @@ const CARD_TYPE_LABELS: Record<CardType, string> = {
   trait: 'ЧЕРТА ХАРАКТЕРА',
   baggage: 'БАГАЖ',
   secret: 'СЕКРЕТНЫЙ ФАКТ',
+  condition: 'УСЛОВИЕ / БОНУС',
   actionCard: 'СПЕЦКАРТА ДЕЙСТВИЯ'
 };
 
