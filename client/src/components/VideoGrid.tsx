@@ -309,9 +309,14 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
         </div>
       </div>
 
-      {/* Revealed Cards Pills Overlay — click a pill to read the full card */}
+      {/* Revealed Cards Pills Overlay — click a pill to read the full card.
+          z-10 so it always paints above the name overlay below, even where
+          the two visually overlap (e.g. a wrapped role name pushes the
+          name block taller than expected) — otherwise the name overlay,
+          despite having no clickable content of its own, would sit on top
+          in the DOM stack and silently swallow clicks meant for a pill. */}
       {player.cards && (
-        <div className="absolute bottom-10 left-2 right-2 flex flex-wrap gap-1 max-h-12 overflow-hidden">
+        <div className="absolute bottom-10 left-2 right-2 z-10 flex flex-wrap gap-1 max-h-12 overflow-hidden">
           {Object.values(player.cards).filter(c => c && c.isRevealed && c.type !== 'actionCard').map(c => (
             <button
               key={c.id}
@@ -325,8 +330,10 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
         </div>
       )}
 
-      {/* Bottom Name overlay */}
-      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent p-2 pt-4 flex items-center justify-between">
+      {/* Bottom Name overlay — purely informational (no clickable content),
+          so pointer-events-none lets clicks fall through to the card pills
+          above whenever the two visually overlap. */}
+      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent p-2 pt-4 flex items-center justify-between pointer-events-none">
         <div>
           <span className="text-xs font-bold text-slate-100 truncate block">{player.name}</span>
           {player.role && (
