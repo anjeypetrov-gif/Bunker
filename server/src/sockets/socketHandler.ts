@@ -163,6 +163,12 @@ export function registerSocketHandlers(io: Server, gameEngine: GameEngine) {
       const room = gameEngine.castVote(code, socket.id, targetId);
       if (room) {
         io.to(code).emit('room_updated', room);
+        // Re-runs bot automation for whatever phase this vote left the room
+        // in — harmless while still VOTING (handlePhaseAutomation guards
+        // against rescheduling bot votes twice), and is what lets bots
+        // react in chat when a human's vote is the one that completes the
+        // round and flips the phase to VOTE_RESULTS.
+        botManager.handlePhaseAutomation(room, gameEngine, io);
       }
     });
 
@@ -191,6 +197,10 @@ export function registerSocketHandlers(io: Server, gameEngine: GameEngine) {
       const room = gameEngine.addChatMessage(code, socket.id, text);
       if (room) {
         io.to(code).emit('room_updated', room);
+        // Gives a random active bot a chance to reply to a real player's
+        // message, so the chat reads as an actual back-and-forth instead
+        // of bots only ever speaking on their own schedule.
+        botManager.handleHumanChat(room, gameEngine, io, socket.id);
       }
     });
 

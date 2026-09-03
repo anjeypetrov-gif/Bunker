@@ -25,7 +25,7 @@ import {
 // Card types that represent revealable personal information.
 // The action card is handled separately through useActionCard() and does
 // not count against the "one reveal per round" limit.
-const REVEALABLE_CARD_TYPES: CardType[] = [
+export const REVEALABLE_CARD_TYPES: CardType[] = [
   'profession', 'health', 'biology', 'hobby', 'trait', 'baggage', 'secret', 'condition'
 ];
 
