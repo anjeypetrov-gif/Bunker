@@ -5,6 +5,7 @@ import { Card, CardType, Player } from '../types/game';
 import { webRTCManager } from '../services/webrtc';
 import { socket } from '../services/socket';
 import { getCardArt } from '../data/cardArt';
+import { getBotAvatarArt } from '../data/botAvatars';
 
 const CARD_TYPE_LABELS: Record<CardType, string> = {
   profession: 'ПРОФЕССИЯ',
@@ -219,6 +220,8 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
   onCardClick
 }) => {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const [avatarArtFailed, setAvatarArtFailed] = useState(false);
+  const botAvatarArt = getBotAvatarArt(player.avatar);
 
   useEffect(() => {
     if (!isSelf && remoteStream && remoteVideoRef.current) {
@@ -254,11 +257,24 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
         />
       ) : null}
 
-      {/* Fallback when video is off */}
+      {/* Fallback when video is off — bots (always videoOff) show their
+          portrait here instead of the generic biohazard icon, when one
+          resolves and hasn't 404'd; everyone else keeps the icon. */}
       {(player.videoOff || (!isSelf && !remoteStream)) && (
         <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-600">
-          <div className="text-3xl mb-1">☣️</div>
-          <span className="text-[10px] font-mono text-slate-500">СИГНАЛ ВИДЕО ОГРАНИЧЕН</span>
+          {botAvatarArt && !avatarArtFailed ? (
+            <img
+              src={botAvatarArt}
+              alt=""
+              className="w-full h-full object-cover"
+              onError={() => setAvatarArtFailed(true)}
+            />
+          ) : (
+            <>
+              <div className="text-3xl mb-1">☣️</div>
+              <span className="text-[10px] font-mono text-slate-500">СИГНАЛ ВИДЕО ОГРАНИЧЕН</span>
+            </>
+          )}
         </div>
       )}
 

@@ -172,18 +172,28 @@ export const App: React.FC = () => {
 
   if (!room || room.phase === 'LOBBY') {
     return (
-      <div className="min-h-screen bg-[#0b0e14] text-slate-100 p-4">
-        <Lobby
-          onCreateRoom={handleCreateRoom}
-          onJoinRoom={handleJoinRoom}
-          onStartGame={handleStartGame}
-          onUpdateSettings={handleUpdateSettings}
-          onAddBot={handleAddBot}
-          onFillBots={handleFillBots}
-          onLeaveGame={handleLeaveGame}
-          room={room}
-          currentSocketId={currentSocketId}
-        />
+      <div
+        className="min-h-screen text-slate-100 p-4 relative bg-[#0b0e14] bg-cover bg-center"
+        style={{ backgroundImage: "url(/backgrounds/main2.jpg)" }}
+      >
+        {/* Darkening overlay — keeps the entry/waiting-room cards (already
+            semi-opaque, bg-slate-900/90) readable over the bright control
+            panel photo, and lets the image stay atmospheric rather than
+            competing with the UI for attention. */}
+        <div className="absolute inset-0 bg-slate-950/75" />
+        <div className="relative z-10">
+          <Lobby
+            onCreateRoom={handleCreateRoom}
+            onJoinRoom={handleJoinRoom}
+            onStartGame={handleStartGame}
+            onUpdateSettings={handleUpdateSettings}
+            onAddBot={handleAddBot}
+            onFillBots={handleFillBots}
+            onLeaveGame={handleLeaveGame}
+            room={room}
+            currentSocketId={currentSocketId}
+          />
+        </div>
       </div>
     );
   }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Shield, Play, Users, LogIn, Bot, LogOut } from './icons';
 import { RoomState } from '../types/game';
+import { getBotAvatarArt } from '../data/botAvatars';
 
 interface LobbyProps {
   onCreateRoom: (name: string, avatar: string) => void;
@@ -82,6 +83,7 @@ export const Lobby: React.FC<LobbyProps> = ({
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
               {Object.values(room.players).map(p => {
+                const botArt = getBotAvatarArt(p.avatar);
                 const avatarObj = AVATARS.find(a => a.id === p.avatar) || AVATARS[0];
                 return (
                   <div
@@ -92,7 +94,15 @@ export const Lobby: React.FC<LobbyProps> = ({
                         : 'bg-slate-800/60 border-slate-700/60 text-slate-200'
                     }`}
                   >
-                    <span className="text-2xl">{avatarObj.icon}</span>
+                    {botArt ? (
+                      <img
+                        src={botArt}
+                        alt=""
+                        className="w-9 h-9 rounded-full object-cover border border-slate-700/60 shrink-0"
+                      />
+                    ) : (
+                      <span className="text-2xl">{avatarObj.icon}</span>
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-sm truncate">{p.name}</span>

@@ -30,6 +30,11 @@ const BOT_NAMES = [
   'Бот Анна (Психолог)'
 ];
 
+// Число портретов ботов в client/src/data/botAvatars.ts
+// (bot-avatar-1 .. bot-avatar-N) — держим в синхроне вручную, как и остальные
+// клиент/сервер дубликаты в этом проекте (см. CardType в types/game.ts).
+const BOT_AVATAR_COUNT = 10;
+
 // Категории реплик, из которых боты собирают свои сообщения в чате
 // обсуждения. Держим здесь, а не в самих функциях, чтобы можно было
 // избегать повторения одной и той же категории подряд у одного бота.
@@ -167,6 +172,17 @@ export class BotManager {
     return this.getRandomItem(pool)(this.displayName(humanName));
   }
 
+  // Присваивает боту id портрета из отдельного пространства 'bot-avatar-N'
+  // (не пересекается с человеческими 'avatar-N' emoji-иконками в Lobby.tsx).
+  // Именованным ботам (BOT_NAMES) портрет закреплён по имени — один и тот
+  // же бот всегда выглядит одинаково между партиями; безымянным "Бот #NNN"
+  // достаётся портрет по текущему количеству игроков в комнате.
+  private pickBotAvatar(botName: string, fallbackIndex: number): string {
+    const nameIndex = BOT_NAMES.indexOf(botName);
+    const index = nameIndex >= 0 ? nameIndex : fallbackIndex;
+    return `bot-avatar-${(index % BOT_AVATAR_COUNT) + 1}`;
+  }
+
   public addBot(room: RoomState, gameEngine: GameEngine): RoomState | null {
     if (room.phase !== 'LOBBY') return null;
     if (Object.keys(room.players).length >= room.maxPlayers) return null;
@@ -180,7 +196,7 @@ export class BotManager {
       id: botId,
       socketId: botId,
       name: botName,
-      avatar: `avatar-${(Object.keys(room.players).length % 6) + 1}`,
+      avatar: this.pickBotAvatar(botName, Object.keys(room.players).length),
       isHost: false,
       isExiled: false,
       cards: {} as any,
