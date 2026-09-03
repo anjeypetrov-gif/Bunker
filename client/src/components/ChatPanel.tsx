@@ -17,7 +17,12 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // block: 'nearest' keeps this scroll confined to the messages feed's own
+    // overflow-y-auto container. Without it (default block: 'end'), the
+    // browser's scrollIntoView walks up the ancestor chain looking for the
+    // nearest scrollable box and can land on an outer flex row instead —
+    // see the min-h-0 comment below for how that actually happened here.
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [messages]);
 
   const handleSend = (e: React.FormEvent) => {
@@ -28,7 +33,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   };
 
   return (
-    <div className="bg-slate-900/90 border border-slate-800 notch p-4 shadow-2xl backdrop-blur-md flex flex-col h-full min-h-[550px] lg:min-h-[650px] justify-between">
+    <div className="bg-slate-900/90 border border-slate-800 notch p-4 shadow-2xl backdrop-blur-md flex flex-col h-full min-h-0 justify-between">
       <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
         <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2 font-mono">
           <MessageSquare className="w-4 h-4 text-amber-400" /> СВЯЗЬ И ЖУРНАЛ СОБЫТИЙ
@@ -39,7 +44,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       </div>
 
       {/* Messages Feed */}
-      <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 mb-3 max-h-[500px] lg:max-h-[560px]">
+      <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 mb-3">
 
         {messages.length === 0 ? (
           <div className="text-center py-10 text-xs text-slate-600 font-mono">

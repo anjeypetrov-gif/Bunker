@@ -214,10 +214,20 @@ export const App: React.FC = () => {
         <ShelterInfo room={room} currentSocketId={currentSocketId} onAdvancePhase={handleAdvancePhase} />
       </div>
 
-      {/* Center Main Area: Left = Cameras Grid, Right = Dedicated Chat Window */}
-      <div className="flex-1 flex overflow-hidden p-2.5 gap-2.5">
+      {/* Center Main Area: Left = Cameras Grid, Right = Dedicated Chat Window.
+          min-h-0 on this row and both its children is load-bearing, not
+          decorative: without it, a flex item's default min-height is "auto"
+          (its content's natural size), not 0 — so if either panel's content
+          ever needs more room than this row actually has (it did: see
+          ChatPanel.tsx history), the row silently grows past its allotted
+          space instead of scrolling internally, `overflow-hidden` quietly
+          turns it into an unintended scroll container, and the chat's
+          autoscroll-to-latest-message then drags this WHOLE row (video grid
+          included) up to reveal the new message, clipping the video grid's
+          own header and top row of tiles above the viewport. */}
+      <div className="flex-1 flex overflow-hidden p-2.5 gap-2.5 min-h-0">
         {/* Participants Video Grid */}
-        <div className="flex-1 h-full min-w-0">
+        <div className="flex-1 h-full min-w-0 min-h-0">
           <VideoGrid
             players={room.players}
             currentSocketId={currentSocketId}
@@ -226,7 +236,7 @@ export const App: React.FC = () => {
         </div>
 
         {/* Dedicated Chat Window (Right Sidebar) */}
-        <div className="w-80 lg:w-96 shrink-0 hidden md:flex flex-col h-full">
+        <div className="w-80 lg:w-96 shrink-0 hidden md:flex flex-col h-full min-h-0">
           <ChatPanel
             messages={room.chatMessages || []}
             onSendMessage={handleSendMessage}
