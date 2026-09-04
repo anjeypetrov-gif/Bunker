@@ -5,7 +5,7 @@ import { Card, CardType, Player } from '../types/game';
 import { webRTCManager } from '../services/webrtc';
 import { socket } from '../services/socket';
 import { getCardArt } from '../data/cardArt';
-import { getBotAvatarArt } from '../data/botAvatars';
+import { getBotAvatarArt, getBotAvatarVideo } from '../data/botAvatars';
 
 const CARD_TYPE_LABELS: Record<CardType, string> = {
   profession: 'ПРОФЕССИЯ',
@@ -221,7 +221,9 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
 }) => {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [avatarArtFailed, setAvatarArtFailed] = useState(false);
+  const [avatarVideoFailed, setAvatarVideoFailed] = useState(false);
   const botAvatarArt = getBotAvatarArt(player.avatar);
+  const botAvatarVideo = getBotAvatarVideo(player.avatar);
 
   useEffect(() => {
     if (!isSelf && remoteStream && remoteVideoRef.current) {
@@ -258,11 +260,29 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
       ) : null}
 
       {/* Fallback when video is off — bots (always videoOff) show their
-          portrait here instead of the generic biohazard icon, when one
-          resolves and hasn't 404'd; everyone else keeps the icon. */}
+          looping avatar clip here instead of the generic biohazard icon.
+          Three-tier fallback: looping <video> (webm first, mp4 second —
+          browsers pick whichever they can decode) -> static poster <img>
+          if video playback itself fails -> generic icon if even the
+          poster 404s. Everyone else (real players with camera off) just
+          gets the icon, since they have no avatar art at all. */}
       {(player.videoOff || (!isSelf && !remoteStream)) && (
         <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-600">
-          {botAvatarArt && !avatarArtFailed ? (
+          {botAvatarVideo && !avatarVideoFailed ? (
+            <video
+              key={botAvatarVideo.webm}
+              autoPlay
+              loop
+              muted
+              playsInline
+              poster={botAvatarVideo.poster}
+              className="w-full h-full object-cover"
+              onError={() => setAvatarVideoFailed(true)}
+            >
+              <source src={botAvatarVideo.webm} type="video/webm" />
+              <source src={botAvatarVideo.mp4} type="video/mp4" />
+            </video>
+          ) : botAvatarArt && !avatarArtFailed ? (
             <img
               src={botAvatarArt}
               alt=""

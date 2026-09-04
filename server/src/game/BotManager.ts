@@ -33,7 +33,7 @@ const BOT_NAMES = [
 // Число портретов ботов в client/src/data/botAvatars.ts
 // (bot-avatar-1 .. bot-avatar-N) — держим в синхроне вручную, как и остальные
 // клиент/сервер дубликаты в этом проекте (см. CardType в types/game.ts).
-const BOT_AVATAR_COUNT = 10;
+const BOT_AVATAR_COUNT = 17;
 
 // Категории реплик, из которых боты собирают свои сообщения в чате
 // обсуждения. Держим здесь, а не в самих функциях, чтобы можно было
