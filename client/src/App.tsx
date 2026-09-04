@@ -11,12 +11,24 @@ import { BottomControlBar } from './components/BottomControlBar';
 import { Shield } from './components/icons';
 import { saveSession, loadSession, clearSession } from './utils/session';
 
+// Entry/lobby screen background — picked randomly once per page load from
+// whichever control-room photos live in public/backgrounds/. Add more files
+// there and list them here to grow the rotation.
+const ENTRY_BACKGROUNDS = ['/backgrounds/main.jpg', '/backgrounds/main2.jpg'];
+
 export const App: React.FC = () => {
   const [room, setRoom] = useState<RoomState | null>(null);
   const [socketId, setSocketId] = useState<string>('');
   // Gates the very first render behind an attempted reconnect, so a page
   // refresh mid-game doesn't flash the join screen before snapping back.
   const [restoring, setRestoring] = useState<boolean>(() => !!loadSession());
+  // Picked once with a lazy initializer, not on every render — this
+  // component re-renders on every 'room_updated' (i.e. constantly while
+  // players sit in the lobby), and re-rolling then would make the
+  // background flicker between photos instead of staying put for the visit.
+  const [entryBackground] = useState(
+    () => ENTRY_BACKGROUNDS[Math.floor(Math.random() * ENTRY_BACKGROUNDS.length)]
+  );
 
   useEffect(() => {
     const handleConnect = () => {
@@ -174,7 +186,7 @@ export const App: React.FC = () => {
     return (
       <div
         className="min-h-screen text-slate-100 p-4 relative bg-[#0b0e14] bg-cover bg-center"
-        style={{ backgroundImage: "url(/backgrounds/main2.jpg)" }}
+        style={{ backgroundImage: `url(${entryBackground})` }}
       >
         {/* Darkening overlay — keeps the entry/waiting-room cards (already
             semi-opaque, bg-slate-900/90) readable over the bright control
