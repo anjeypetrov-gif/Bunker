@@ -30,6 +30,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
   onToggleMedia
 }) => {
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
+  const [peerStates, setPeerStates] = useState<Record<string, string>>({});
   // Состояние микрофона/камеры берём из комнаты (единый источник для всех панелей).
   const me = players[currentSocketId];
   const audioMuted = !!me?.audioMuted;
@@ -51,6 +52,13 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
         setRemoteStreams(prev => {
           const next = { ...prev };
           delete next[socketId];
+          return next;
+        });
+      },
+      (socketId, state) => {
+        setPeerStates(prev => {
+          const next = { ...prev };
+          if (state) next[socketId] = state; else delete next[socketId];
           return next;
         });
       }
@@ -139,6 +147,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
               isSelf={isSelf}
               localVideoRef={isSelf ? localVideoRef : undefined}
               remoteStream={!isSelf ? remoteStream : undefined}
+              peerState={!isSelf ? peerStates[player.id] : undefined}
               onCardClick={(card) => setInspected({ playerName: player.name, card })}
             />
           );
@@ -195,6 +204,7 @@ interface PlayerVideoCardProps {
   isSelf: boolean;
   localVideoRef?: React.RefObject<HTMLVideoElement>;
   remoteStream?: MediaStream;
+  peerState?: string;
   onCardClick: (card: Card) => void;
 }
 
@@ -203,19 +213,39 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
   isSelf,
   localVideoRef,
   remoteStream,
+  peerState,
   onCardClick
 }) => {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const [soundBlocked, setSoundBlocked] = useState(false);
   const [avatarArtFailed, setAvatarArtFailed] = useState(false);
   const [avatarVideoFailed, setAvatarVideoFailed] = useState(false);
   const botAvatarArt = getBotAvatarArt(player.avatar);
   const botAvatarVideo = getBotAvatarVideo(player.avatar);
 
+  // player.videoOff в зависимостях: когда собеседник выключает и снова включает камеру,
+  // <video> пересоздаётся пустым и поток нужно привязать заново.
   useEffect(() => {
-    if (!isSelf && remoteStream && remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream;
-    }
-  }, [isSelf, remoteStream]);
+    const el = remoteVideoRef.current;
+    if (isSelf || !remoteStream || !el) return;
+    el.srcObject = remoteStream;
+    el.play().catch(() => {
+      // Автовоспроизведение со звуком заблокировано (iOS/Safari) — стартуем без звука.
+      el.muted = true;
+      setSoundBlocked(true);
+      el.play().catch(() => {});
+    });
+  }, [isSelf, remoteStream, player.videoOff]);
+
+  const isBotPlayer = player.id.startsWith('bot-');
+  const linkLabel =
+    !isSelf && !isBotPlayer && !remoteStream && !player.isExiled && player.isConnected
+      ? peerState === 'failed'
+        ? 'НЕТ СВЯЗИ'
+        : peerState === 'disconnected'
+        ? 'СВЯЗЬ ПРЕРВАНА…'
+        : 'СОЕДИНЕНИЕ…'
+      : null;
 
   return (
     <div
@@ -300,6 +330,31 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
           <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping mb-2" />
           <span className="text-[11px] uppercase tracking-widest font-black">ПЕРЕПОДКЛЮЧЕНИЕ...</span>
         </div>
+      )}
+
+      {linkLabel && (
+        <div className="absolute top-9 inset-x-0 flex justify-center pointer-events-none z-10">
+          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 notch-sm border ${
+            peerState === 'failed'
+              ? 'bg-red-950/80 border-red-500/50 text-red-300'
+              : 'bg-slate-950/80 border-amber-500/40 text-amber-300'
+          }`}>
+            {linkLabel}
+          </span>
+        </div>
+      )}
+
+      {soundBlocked && !isSelf && remoteStream && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (remoteVideoRef.current) { remoteVideoRef.current.muted = false; remoteVideoRef.current.play().catch(() => {}); }
+            setSoundBlocked(false);
+          }}
+          className="absolute top-9 inset-x-0 mx-auto w-fit z-10 text-[10px] font-mono font-bold px-2 py-1 notch-sm bg-amber-500 text-slate-950 cursor-pointer"
+        >
+          ВКЛЮЧИТЬ ЗВУК
+        </button>
       )}
 
       {/* Top badges */}

@@ -27,6 +27,11 @@ export class WebRTCManager {
   private creating: Record<string, Promise<void>> = {};
   private onRemoteStreamCallback: ((socketId: string, stream: MediaStream) => void) | null = null;
   private onPeerRemoveCallback: ((socketId: string) => void) | null = null;
+  private onPeerStateCallback: ((socketId: string, state: string) => void) | null = null;
+  private peerStates: Record<string, string> = {};
+  private retries: Record<string, number> = {};
+  private lastSelfId = '';
+  private lastRoster: { id: string; isConnected?: boolean }[] = [];
 
   constructor() {
     // Слушатели живут на уровне менеджера, а не React-компонента: сигналы
@@ -39,6 +44,12 @@ export class WebRTCManager {
     });
     socket.on('user_left_webrtc', ({ socketId }: { socketId: string }) => {
       this.removePeer(socketId);
+    });
+    // После (пере)подключения сокета у нас новый socket.id: старые соединения мертвы,
+    // сбрасываем их, а syncPeers построит заново (локальная камера остаётся).
+    socket.on('connect', () => {
+      Object.keys(this.peerConnections).forEach(id => this.removePeer(id));
+      this.retries = {};
     });
   }
 
@@ -78,10 +89,13 @@ export class WebRTCManager {
 
   public setCallbacks(
     onRemoteStream: (socketId: string, stream: MediaStream) => void,
-    onPeerRemove: (socketId: string) => void
+    onPeerRemove: (socketId: string) => void,
+    onPeerState?: (socketId: string, state: string) => void
   ) {
     this.onRemoteStreamCallback = onRemoteStream;
     this.onPeerRemoveCallback = onPeerRemove;
+    this.onPeerStateCallback = onPeerState || null;
+    if (onPeerState) Object.entries(this.peerStates).forEach(([id, st]) => onPeerState(id, st));
     // Потоки, пришедшие до монтирования VideoGrid, отдаём сразу.
     Object.entries(this.remoteStreams).forEach(([id, s]) => onRemoteStream(id, s));
   }
@@ -90,7 +104,28 @@ export class WebRTCManager {
    * Приводит набор соединений в соответствие со списком игроков комнаты.
    * Чтобы не было "двойных" offer (glare), инициатор — тот, у кого socket.id меньше.
    */
+  private setState(id: string, state: string) {
+    if (state) this.peerStates[id] = state; else delete this.peerStates[id];
+    this.onPeerStateCallback?.(id, state);
+  }
+
+  // Соединение умерло (failed / долгий disconnected): сносим и пробуем ещё раз, не более 3 раз.
+  private scheduleRetry(id: string, pc: RTCPeerConnection) {
+    if (this.peerConnections[id] !== pc) return;
+    const n = (this.retries[id] || 0) + 1;
+    this.retries[id] = n;
+    this.removePeer(id);
+    if (n <= 3) {
+      this.setState(id, 'checking');
+      setTimeout(() => this.syncPeers(this.lastSelfId, this.lastRoster), 1500 * n);
+    } else {
+      this.setState(id, 'failed');
+    }
+  }
+
   public syncPeers(selfId: string, players: { id: string; isConnected?: boolean }[]) {
+    this.lastSelfId = selfId;
+    this.lastRoster = players;
     const wanted = new Set<string>();
     players.forEach(p => {
       if (p.id === selfId || isBotId(p.id) || p.isConnected === false) return;
@@ -132,10 +167,18 @@ export class WebRTCManager {
       };
 
       pc.oniceconnectionstatechange = () => {
-        console.log(`[WebRTC] ${targetSocketId} ice=${pc.iceConnectionState} conn=${pc.connectionState}`);
-        if (pc.iceConnectionState === 'failed') {
-          // Прямой путь не нашёлся (нужен TURN) — пробуем перезапустить ICE.
-          try { pc.restartIce(); } catch { /* noop */ }
+        const st = pc.iceConnectionState;
+        console.log(`[WebRTC] ${targetSocketId} ice=${st} conn=${pc.connectionState}`);
+        if (this.peerConnections[targetSocketId] !== pc) return;
+        this.setState(targetSocketId, st);
+        if (st === 'connected' || st === 'completed') this.retries[targetSocketId] = 0;
+        if (st === 'failed') this.scheduleRetry(targetSocketId, pc);
+        if (st === 'disconnected') {
+          setTimeout(() => {
+            if (this.peerConnections[targetSocketId] === pc && pc.iceConnectionState === 'disconnected') {
+              this.scheduleRetry(targetSocketId, pc);
+            }
+          }, 6000);
         }
       };
 
@@ -196,6 +239,7 @@ export class WebRTCManager {
     }
     delete this.pendingCandidates[socketId];
     if (!silent) {
+      this.setState(socketId, '');
       delete this.remoteStreams[socketId];
       this.onPeerRemoveCallback?.(socketId);
     }
