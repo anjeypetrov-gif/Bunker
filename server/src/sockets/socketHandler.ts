@@ -199,6 +199,29 @@ export function registerSocketHandlers(io: Server, gameEngine: GameEngine) {
       }
     });
 
+    // Хост: пауза / продолжение
+    socket.on('toggle_pause', ({ code }) => {
+      const room = gameEngine.togglePause(code, socket.id);
+      if (room) {
+        io.to(code).emit('room_updated', room);
+        if (!room.paused) botManager.handlePhaseAutomation(room, gameEngine, io);
+      }
+    });
+
+    // Хост: исключить игрока (или бота)
+    socket.on('kick_player', ({ code, targetId }) => {
+      const room = gameEngine.getRoom(code);
+      if (!room || room.hostId !== socket.id || targetId === socket.id || !room.players[targetId]) return;
+      const result = gameEngine.leaveRoom(targetId, 'kicked');
+      const targetSocket = io.sockets.sockets.get(targetId);
+      if (targetSocket) {
+        targetSocket.emit('kicked');
+        targetSocket.leave(code);
+      }
+      io.to(code).emit('user_left_webrtc', { socketId: targetId });
+      if (result.room) io.to(code).emit('room_updated', result.room);
+    });
+
     // Досрочное завершение выступления (говорящий или хост)
     socket.on('end_speech', ({ code }) => {
       gameEngine.endSpeech(code, socket.id);

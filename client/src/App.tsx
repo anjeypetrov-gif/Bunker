@@ -10,6 +10,8 @@ import { VotingModal } from './components/VotingModal';
 import { GameOver } from './components/GameOver';
 import { BottomControlBar } from './components/BottomControlBar';
 import { FilmEffect } from './components/FilmEffect';
+import { VoteReveal } from './components/VoteReveal';
+import { sfx } from './utils/sfx';
 import { EventBanner } from './components/EventBanner';
 import { SpeechBanner } from './components/SpeechBanner';
 import { HintBar, HelpSheet } from './components/Hints';
@@ -36,6 +38,10 @@ export const App: React.FC = () => {
   // Gates the very first render behind an attempted reconnect, so a page
   // refresh mid-game doesn't flash the join screen before snapping back.
   const [helpOpen, setHelpOpen] = useState(false);
+  const phaseForSfx = room?.phase;
+  useEffect(() => {
+    if (phaseForSfx === 'VOTING') sfx.siren();
+  }, [phaseForSfx]);
   const [restoring, setRestoring] = useState<boolean>(() => !!loadSession());
   // Picked once with a lazy initializer, not on every render — this
   // component re-renders on every 'room_updated' (i.e. constantly while
@@ -73,6 +79,16 @@ export const App: React.FC = () => {
 
     socket.on('connect', handleConnect);
 
+    socket.on('kicked', () => {
+      clearSession();
+      setRoom(null);
+      alert('Хост исключил вас из комнаты.');
+    });
+
+    // Ambient-звук можно запускать только после жеста пользователя.
+    const startAudio = () => { sfx.startAmbient(); window.removeEventListener('pointerdown', startAudio); };
+    window.addEventListener('pointerdown', startAudio);
+
     socket.on('room_updated', (updatedRoom: RoomState) => {
       setRoom(updatedRoom);
     });
@@ -83,6 +99,7 @@ export const App: React.FC = () => {
 
     return () => {
       socket.off('connect', handleConnect);
+      socket.off('kicked');
       socket.off('room_updated');
       socket.off('game_started');
     };
@@ -171,6 +188,14 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleTogglePause = () => {
+    if (room) socket.emit('toggle_pause', { code: room.code });
+  };
+
+  const handleKickPlayer = (targetId: string) => {
+    if (room) socket.emit('kick_player', { code: room.code, targetId });
+  };
+
   const handleEndSpeech = () => {
     if (room) {
       socket.emit('end_speech', { code: room.code });
@@ -229,6 +254,7 @@ export const App: React.FC = () => {
             onAddBot={handleAddBot}
             onFillBots={handleFillBots}
             onLeaveGame={handleLeaveGame}
+            onKickPlayer={handleKickPlayer}
             room={room}
             currentSocketId={currentSocketId}
           />
@@ -297,6 +323,8 @@ export const App: React.FC = () => {
           <VideoGrid
             players={room.players}
             currentSocketId={currentSocketId}
+            hostId={room.hostId}
+            onKick={handleKickPlayer}
             speakerId={room.phase === 'DISCUSSION' ? room.speakerId : null}
             speechSeconds={speechSeconds}
             onToggleMedia={handleToggleMedia}
@@ -306,7 +334,8 @@ export const App: React.FC = () => {
         {/* Dedicated Chat Window (Right Sidebar) */}
         <div className={`${mobileTab === 'chat' ? 'flex' : 'hidden'} md:flex w-full md:w-80 lg:w-96 md:shrink-0 flex-col h-full min-h-0`}>
           <ChatPanel
-            messages={room.chatMessages || []}
+            messages={(room.chatMessages || []).filter(m => !m.ghost || !!currentPlayer?.isExiled)}
+            ghostMode={!!currentPlayer?.isExiled}
             onSendMessage={handleSendMessage}
             currentSocketId={currentSocketId}
           />
@@ -324,7 +353,23 @@ export const App: React.FC = () => {
           onToggleMedia={handleToggleMedia}
           onAdvancePhase={handleAdvancePhase}
           onLeaveGame={handleLeaveGame}
+          onTogglePause={handleTogglePause}
         />
+      )}
+
+      <VoteReveal room={room} />
+
+      {room.paused && (
+        <div className="fixed inset-0 z-[95] bg-black/75 backdrop-blur-sm flex flex-col items-center justify-center gap-4 text-center p-6">
+          <div className="text-5xl">⏸</div>
+          <div className="text-2xl font-black text-amber-300 tracking-wider font-mono">ПАУЗА</div>
+          <div className="text-sm text-slate-300 font-mono">Хост приостановил игру. Таймеры остановлены.</div>
+          {room.hostId === currentSocketId && (
+            <button onClick={handleTogglePause} className="px-6 py-3 notch-sm bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm uppercase cursor-pointer">
+              Продолжить игру
+            </button>
+          )}
+        </div>
       )}
 
       {/* Voting Modal Overlay */}

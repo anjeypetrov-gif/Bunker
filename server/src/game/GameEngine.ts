@@ -227,6 +227,7 @@ export class GameEngine {
       speakerId: null,
       speakerQueue: [],
       roundEvent: null,
+      paused: false,
       speechDuration: 60,
       speechRemainingMs: 0
     };
@@ -332,7 +333,7 @@ export class GameEngine {
     return { room, previousSocketId: oldSocketId };
   }
 
-  public leaveRoom(socketId: string): { room: RoomState | null; code: string | null } {
+  public leaveRoom(socketId: string, reason: 'left' | 'kicked' = 'left'): { room: RoomState | null; code: string | null } {
     for (const token in this.tokenMap) {
       if (this.tokenMap[token].socketId === socketId) delete this.tokenMap[token];
     }
@@ -362,7 +363,7 @@ export class GameEngine {
           this.addSystemMessage(room, `Новым лидером бункера назначен ${room.players[nextHostId].name}.`);
         }
 
-        this.addSystemMessage(room, `${playerName} покинул комнату.`);
+        this.addSystemMessage(room, reason === 'kicked' ? `${playerName} исключён из комнаты хостом.` : `${playerName} покинул комнату.`);
         return { room, code };
       }
     }
@@ -488,6 +489,8 @@ export class GameEngine {
     room.votes = {};
     room.lastExiledPlayerId = null;
     room.roundEvent = null;
+    room.paused = false;
+    delete this.pausedLeft[room.code];
     delete this.eventsUsed[room.code];
     room.phase = 'INTRO';
     room.currentRound = 1;
@@ -503,11 +506,15 @@ export class GameEngine {
 
   // ---------- Очередь выступлений (фаза DISCUSSION) ----------
 
+  private pausedLeft: Record<string, number> = {};
+
   private attachSpeechClock(room: RoomState) {
     Object.defineProperty(room, 'speechRemainingMs', {
       enumerable: true,
       configurable: true,
       get: () => {
+        const frozen = this.pausedLeft[room.code];
+        if (frozen != null) return frozen;
         const end = this.speechEnds[room.code];
         return end ? Math.max(0, end - Date.now()) : 0;
       }
@@ -519,6 +526,7 @@ export class GameEngine {
     if (t) clearTimeout(t);
     delete this.speechTimers[room.code];
     delete this.speechEnds[room.code];
+    delete this.pausedLeft[room.code];
     room.speakerId = null;
     room.speakerQueue = [];
   }
@@ -565,20 +573,57 @@ export class GameEngine {
     } else {
       room.speakerId = next;
       const ms = room.speechDuration * 1000;
-      this.speechEnds[room.code] = Date.now() + ms;
-      this.speechTimers[room.code] = setTimeout(() => {
-        const current = this.rooms[room.code];
-        if (!current || current.phase !== 'DISCUSSION' || current.speakerId !== next) return;
-        this.advanceSpeaker(current, true);
-      }, ms + 150);
+      if (room.paused) {
+        // Игра на паузе: время нового говорящего ждёт возобновления.
+        this.pausedLeft[room.code] = ms;
+      } else {
+        this.armSpeechTimer(room, next, ms);
+      }
     }
     if (notify && this.onSpeakerChange) this.onSpeakerChange(room);
+  }
+
+  private armSpeechTimer(room: RoomState, speakerId: string, ms: number) {
+    this.speechEnds[room.code] = Date.now() + ms;
+    this.speechTimers[room.code] = setTimeout(() => {
+      const current = this.rooms[room.code];
+      if (!current || current.phase !== 'DISCUSSION' || current.speakerId !== speakerId || current.paused) return;
+      this.advanceSpeaker(current, true);
+    }, ms + 150);
+  }
+
+  // Хост ставит игру на паузу / снимает с паузы.
+  public togglePause(code: string, socketId: string): RoomState | null {
+    const room = this.rooms[code];
+    if (!room || room.hostId !== socketId) return null;
+    if (!['CARD_REVEAL', 'DISCUSSION', 'VOTING'].includes(room.phase)) return null;
+    if (!room.paused) {
+      room.paused = true;
+      const end = this.speechEnds[code];
+      if (end && room.speakerId) {
+        this.pausedLeft[code] = Math.max(0, end - Date.now());
+        const t = this.speechTimers[code];
+        if (t) clearTimeout(t);
+        delete this.speechTimers[code];
+        delete this.speechEnds[code];
+      }
+      this.addSystemMessage(room, '⏸ Хост поставил игру на паузу.');
+    } else {
+      room.paused = false;
+      const left = this.pausedLeft[code];
+      delete this.pausedLeft[code];
+      if (left != null && room.speakerId && room.phase === 'DISCUSSION') {
+        this.armSpeechTimer(room, room.speakerId, left);
+      }
+      this.addSystemMessage(room, '▶ Игра продолжается.');
+    }
+    return room;
   }
 
   // Говорящий (или хост) досрочно завершает выступление.
   public endSpeech(code: string, socketId: string): RoomState | null {
     const room = this.rooms[code];
-    if (!room || room.phase !== 'DISCUSSION' || !room.speakerId) return null;
+    if (!room || room.phase !== 'DISCUSSION' || !room.speakerId || room.paused) return null;
     if (socketId !== room.speakerId && socketId !== room.hostId) return null;
     this.advanceSpeaker(room, true);
     return room;
@@ -594,7 +639,7 @@ export class GameEngine {
 
   public advancePhase(code: string): RoomState | null {
     const room = this.rooms[code];
-    if (!room) return null;
+    if (!room || room.paused) return null;
 
     this.stopSpeeches(room);
 
@@ -660,7 +705,7 @@ export class GameEngine {
 
   public revealCard(code: string, socketId: string, cardType: CardType): RoomState | null {
     const room = this.rooms[code];
-    if (!room || room.phase !== 'CARD_REVEAL') return null;
+    if (!room || room.phase !== 'CARD_REVEAL' || room.paused) return null;
     if (!REVEALABLE_CARD_TYPES.includes(cardType)) return null;
 
     const player = room.players[socketId];
@@ -679,7 +724,7 @@ export class GameEngine {
 
   public castVote(code: string, voterId: string, targetId: string): RoomState | null {
     const room = this.rooms[code];
-    if (!room || room.phase !== 'VOTING') return null;
+    if (!room || room.phase !== 'VOTING' || room.paused) return null;
 
     const voter = room.players[voterId];
     const target = room.players[targetId];
@@ -744,7 +789,7 @@ export class GameEngine {
 
   public useActionCard(code: string, socketId: string, targetId?: string): RoomState | null {
     const room = this.rooms[code];
-    if (!room) return null;
+    if (!room || room.paused) return null;
 
     const player = room.players[socketId];
     if (!player || player.isExiled) return null;
@@ -822,7 +867,9 @@ export class GameEngine {
       senderId,
       senderName: player.name,
       text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      // Изгнанные общаются в своём чате и не влияют на живых игроков.
+      ...(player.isExiled && room.phase !== 'LOBBY' && room.phase !== 'GAME_OVER' ? { ghost: true } : {})
     };
 
     room.chatMessages.push(msg);

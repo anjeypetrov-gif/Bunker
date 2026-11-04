@@ -13,15 +13,15 @@ export function useSpeechClock(room: RoomState): number {
   useEffect(() => {
     base.current = { ms: room.speechRemainingMs ?? 0, at: performance.now() };
     force(n => n + 1);
-  }, [room.speechRemainingMs, room.speakerId, room.phase]);
+  }, [room.speechRemainingMs, room.speakerId, room.phase, room.paused]);
 
   useEffect(() => {
-    if (room.phase !== 'DISCUSSION' || !room.speakerId) return;
+    if (room.phase !== 'DISCUSSION' || !room.speakerId || room.paused) return;
     const t = setInterval(() => force(n => n + 1), 250);
     return () => clearInterval(t);
-  }, [room.phase, room.speakerId]);
+  }, [room.phase, room.speakerId, room.paused]);
 
   if (room.phase !== 'DISCUSSION' || !room.speakerId) return 0;
-  const left = base.current.ms - (performance.now() - base.current.at);
+  const left = room.paused ? base.current.ms : base.current.ms - (performance.now() - base.current.at);
   return Math.max(0, Math.ceil(left / 1000));
 }

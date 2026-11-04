@@ -6,12 +6,14 @@ interface ChatPanelProps {
   messages: ChatMessage[];
   onSendMessage: (text: string) => void;
   currentSocketId: string;
+  ghostMode?: boolean;
 }
 
 export const ChatPanel: React.FC<ChatPanelProps> = ({
   messages,
   onSendMessage,
-  currentSocketId
+  currentSocketId,
+  ghostMode = false
 }) => {
   const [inputText, setInputText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -72,13 +74,15 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               <div
                 key={msg.id}
                 className={`p-2.5 notch-sm border text-xs leading-snug max-w-[85%] ${
-                  isSelf
+                  msg.ghost
+                    ? 'mr-auto bg-violet-950/30 border-violet-800/40 text-violet-100 italic'
+                    : isSelf
                     ? 'ml-auto bg-amber-950/30 border-amber-800/50 text-amber-100'
                     : 'mr-auto bg-slate-950 border-slate-800 text-slate-200'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="font-bold text-amber-400 text-[11px]">{msg.senderName}</span>
+                  <span className="font-bold text-amber-400 text-[11px]">{msg.ghost ? "👻 " : ""}{msg.senderName}</span>
                   <span className="text-[9px] font-mono text-slate-500">{msg.timestamp}</span>
                 </div>
                 <p>{msg.text}</p>
@@ -88,6 +92,12 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {ghostMode && (
+        <div className="text-[10px] font-mono text-violet-300 bg-violet-950/30 border border-violet-800/40 px-2 py-1 mb-2 notch-sm">
+          👻 Вы изгнаны: ваши сообщения видят только изгнанные.
+        </div>
+      )}
 
       {/* Input Form */}
       <form onSubmit={handleSend} className="flex items-center gap-2 pt-2 border-t border-slate-800">

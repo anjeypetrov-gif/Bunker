@@ -1,26 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import { RoomState } from '../types/game';
 import { Clock } from './icons';
+import { sfx } from '../utils/sfx';
 
 interface Props {
   room: RoomState;
   currentSocketId: string;
   secondsLeft: number;
   onEndSpeech: () => void;
-}
-
-function beep(freq: number, ms: number) {
-  try {
-    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-    const ctx = new Ctx();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.frequency.value = freq;
-    g.gain.value = 0.08;
-    o.connect(g); g.connect(ctx.destination);
-    o.start();
-    setTimeout(() => { o.stop(); ctx.close(); }, ms);
-  } catch { /* звук необязателен */ }
 }
 
 export const SpeechBanner: React.FC<Props> = ({ room, currentSocketId, secondsLeft, onEndSpeech }) => {
@@ -35,8 +22,8 @@ export const SpeechBanner: React.FC<Props> = ({ room, currentSocketId, secondsLe
   // Ваш ход: один сигнал при начале, и по тику на последних 3 секундах.
   useEffect(() => {
     if (!isMe) { lastBeep.current = -1; return; }
-    if (lastBeep.current === -1) beep(880, 250);
-    if (secondsLeft <= 3 && secondsLeft > 0 && lastBeep.current !== secondsLeft) beep(520, 120);
+    if (lastBeep.current === -1) sfx.turn();
+    if (secondsLeft <= 3 && secondsLeft > 0 && lastBeep.current !== secondsLeft) sfx.tick();
     lastBeep.current = secondsLeft;
   }, [isMe, secondsLeft, room.speakerId]);
 

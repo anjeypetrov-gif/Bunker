@@ -11,6 +11,7 @@ interface LobbyProps {
   onUpdateSettings: (settings: { maxPlayers?: number; turnDuration?: number }) => void;
   onAddBot?: () => void;
   onFillBots?: () => void;
+  onKickPlayer?: (targetId: string) => void;
   onLeaveGame?: () => void;
   room: RoomState | null;
   currentSocketId: string;
@@ -33,6 +34,7 @@ export const Lobby: React.FC<LobbyProps> = ({
   onAddBot,
   onFillBots,
   onLeaveGame,
+  onKickPlayer,
   room,
   currentSocketId
 }) => {
@@ -159,6 +161,15 @@ export const Lobby: React.FC<LobbyProps> = ({
                         {p.id === currentSocketId ? 'Вы' : 'Готов к входу'}
                       </span>
                     </div>
+                    {isHost && p.id !== currentSocketId && onKickPlayer && (
+                      <button
+                        onClick={() => { if (window.confirm(`Исключить ${p.name}?`)) onKickPlayer(p.id); }}
+                        className="shrink-0 w-7 h-7 border border-slate-600 text-slate-400 hover:bg-red-600 hover:text-white hover:border-red-600 text-xs font-bold cursor-pointer"
+                        title="Исключить"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 );
               })}

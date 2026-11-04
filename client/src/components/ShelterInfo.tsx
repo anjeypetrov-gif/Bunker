@@ -32,7 +32,8 @@ export const ShelterInfo: React.FC<ShelterInfoProps> = ({
   }, [room.phase, room.currentRound, room.turnDuration]);
 
   useEffect(() => {
-    if (room.phase === 'INTRO') setDetailsOpen(true);
+    // Развёрнуто при знакомстве с катастрофой, дальше сворачиваем, чтобы освободить место камерам.
+    setDetailsOpen(room.phase === 'INTRO');
   }, [room.phase]);
 
   const isHost = room.hostId === currentSocketId;

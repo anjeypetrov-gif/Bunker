@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { sfx } from '../utils/sfx';
 import {
   Mic,
   MicOff,
@@ -28,6 +29,7 @@ interface BottomControlBarProps {
   onToggleMedia: (audioMuted: boolean, videoOff: boolean) => void;
   onAdvancePhase: () => void;
   onLeaveGame: () => void;
+  onTogglePause?: () => void;
 }
 
 const EFFECT_ICON: Record<string, any> = {
@@ -48,8 +50,10 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
   onUseActionCard,
   onToggleMedia,
   onAdvancePhase,
-  onLeaveGame
+  onLeaveGame,
+  onTogglePause
 }) => {
+  const [soundOn, setSoundOn] = useState(sfx.isOn());
   // Единый источник состояния — данные игрока из комнаты (синхронно с панелью камер).
   const audioMuted = !!player.audioMuted;
   const videoOff = !!player.videoOff;
@@ -125,6 +129,24 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
             {videoOff ? <VideoOff className="w-4 h-4" /> : <Video className="w-4 h-4" />}
             <span className="hidden sm:inline">{videoOff ? 'КАМЕРА ВЫКЛ' : 'КАМЕРА ВКЛ'}</span>
           </button>
+
+          <button
+            onClick={() => { const v = !soundOn; sfx.setOn(v); setSoundOn(v); }}
+            className="p-2.5 notch-sm border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs font-mono cursor-pointer"
+            title={soundOn ? 'Выключить звуки' : 'Включить звуки'}
+          >
+            {soundOn ? '🔊' : '🔇'}
+          </button>
+
+          {room.hostId === currentSocketId && onTogglePause && ['CARD_REVEAL', 'DISCUSSION', 'VOTING'].includes(room.phase) && (
+            <button
+              onClick={onTogglePause}
+              className="p-2.5 notch-sm border border-amber-500/40 bg-slate-900 hover:bg-slate-800 text-amber-300 text-xs font-mono font-bold cursor-pointer"
+              title="Пауза"
+            >
+              ⏸<span className="hidden sm:inline"> ПАУЗА</span>
+            </button>
+          )}
 
           {player.role && (
             <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 border border-amber-500/30 notch-sm text-xs font-mono text-amber-300">

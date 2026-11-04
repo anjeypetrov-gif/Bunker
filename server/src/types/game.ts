@@ -84,6 +84,7 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   isSystem?: boolean;
+  ghost?: boolean; // сообщение изгнанного: видят только изгнанные
 }
 
 export interface VoteRecord {
@@ -112,6 +113,7 @@ export interface RoomState {
   speakerId: string | null;
   speakerQueue: string[];
   roundEvent: { title: string; desc: string; needs: string } | null;
+  paused: boolean;
   speechDuration: number;
   // Сколько мс осталось у говорящего на момент отправки (без зависимости от часов клиента).
   speechRemainingMs: number;

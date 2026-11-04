@@ -23,6 +23,8 @@ interface VideoGridProps {
   currentSocketId: string;
   speakerId?: string | null;
   speechSeconds?: number;
+  hostId?: string;
+  onKick?: (targetId: string) => void;
   onToggleMedia: (audioMuted: boolean, videoOff: boolean) => void;
 }
 
@@ -31,6 +33,8 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
   currentSocketId,
   speakerId = null,
   speechSeconds = 0,
+  hostId,
+  onKick,
   onToggleMedia
 }) => {
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
@@ -153,6 +157,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
               remoteStream={!isSelf ? remoteStream : undefined}
               peerState={!isSelf ? peerStates[player.id] : undefined}
               isSpeaker={speakerId === player.id}
+              onKick={hostId === currentSocketId && !isSelf && onKick ? () => onKick(player.id) : undefined}
               speechSeconds={speechSeconds}
               onCardClick={(card) => setInspected({ playerName: player.name, card })}
             />
@@ -213,6 +218,7 @@ interface PlayerVideoCardProps {
   peerState?: string;
   isSpeaker?: boolean;
   speechSeconds?: number;
+  onKick?: () => void;
   onCardClick: (card: Card) => void;
 }
 
@@ -224,6 +230,7 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
   peerState,
   isSpeaker = false,
   speechSeconds = 0,
+  onKick,
   onCardClick
 }) => {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -269,6 +276,16 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
           : 'border-slate-800'
       }`}
     >
+      {onKick && (
+        <button
+          onClick={() => { if (window.confirm(`Исключить ${player.name} из комнаты?`)) onKick(); }}
+          className="absolute top-8 right-1.5 z-30 w-6 h-6 flex items-center justify-center bg-slate-950/80 hover:bg-red-600 text-slate-300 hover:text-white text-xs font-bold border border-slate-700 cursor-pointer"
+          title="Исключить игрока"
+        >
+          ✕
+        </button>
+      )}
+
       {isSpeaker && (
         <div className="absolute top-1.5 left-1.5 z-20 flex items-center gap-1 bg-amber-400 text-slate-950 px-2 py-0.5 text-[11px] font-black font-mono notch-sm shadow">
           <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
