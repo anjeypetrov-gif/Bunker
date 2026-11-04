@@ -39,8 +39,39 @@ function formatYears(n: number): string {
   return `${n} лет`;
 }
 
+
+const HOBBY_LEVELS = ['любитель', 'уверенный практик', 'мастер своего дела'];
+const BAGGAGE_STATES = ['новое, в упаковке', 'б/у, но исправно', 'потёртое, но рабочее', 'с небольшим дефектом'];
+
+function profLevel(years: number): string {
+  if (years <= 4) return 'младший специалист';
+  if (years <= 10) return 'специалист';
+  if (years <= 17) return 'ведущий специалист';
+  return 'признанный эксперт';
+}
+
+function randInt(min: number, max: number): number {
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
 export class GameEngine {
   private rooms: Record<string, RoomState> = {};
+
+  // Память о прошлых партиях комнаты: для каждой категории карт запоминаем,
+  // в какой по счёту игре вариант выпадал в последний раз. Следующая раздача
+  // берёт сначала то, что не выпадало вообще или давно (случайно среди
+  // равных), поэтому при «Сыграть ещё раз» наборы заметно отличаются.
+  private dealMemory: Record<string, { games: number; used: Record<string, Record<string, number>> }> = {};
+
+  // Очередь выступлений в фазе обсуждения (сервер — единственный источник
+  // правды: клиенты только показывают отсчёт).
+  private speechEnds: Record<string, number> = {};
+  private speechTimers: Record<string, NodeJS.Timeout> = {};
+  public onSpeakerChange: ((room: RoomState) => void) | null = null;
 
   // Maps a private per-player session token (never sent to other clients,
   // never part of RoomState/Player so it can't leak through room_updated
@@ -80,6 +111,57 @@ export class GameEngine {
       }
       return deck.pop() as T;
     };
+  }
+
+  private freshnessOrder<T>(pool: T[], keyOf: (t: T) => string, used: Record<string, number>): T[] {
+    return pool
+      .map(item => ({ item, last: used[keyOf(item)] ?? 0, r: Math.random() }))
+      .sort((a, b) => a.last - b.last || a.r - b.r)
+      .map(x => x.item);
+  }
+
+  // Раздаёт варианты из колоды «самые свежие первыми»; запоминает номер
+  // игры для каждого выпавшего варианта.
+  private createFreshPicker<T>(pool: T[], keyOf: (t: T) => string, used: Record<string, number>, game: number): () => T {
+    let deck: T[] = [];
+    return () => {
+      if (deck.length === 0) deck = this.freshnessOrder(pool, keyOf, used);
+      const item = deck.shift() as T;
+      used[keyOf(item)] = game;
+      return item;
+    };
+  }
+
+  private rollBiology(taken: Set<string>): { sex: string; age: number; fertility: string } {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const male = Math.random() < 0.5;
+      const sex = male ? 'Мужчина' : 'Женщина';
+      const age = randInt(18, male ? 60 : 55);
+      const key = `${sex}${age}`;
+      if (taken.has(key) && attempt < 19) continue;
+      taken.add(key);
+
+      let base: string;
+      if (age <= 25) base = 'Высокая фертильность, молодой организм';
+      else if (age <= 35) base = male ? 'Фертилен, хорошая физическая форма' : 'Фертильна, хорошая физическая форма';
+      else if (age <= 45) base = 'Умеренная фертильность';
+      else base = 'Низкая фертильность, большой жизненный опыт';
+
+      const extras: string[] = [];
+      if (Math.random() < 0.35) {
+        if (age >= 30) {
+          const kids = randInt(1, 3);
+          const kidsText = kids === 1 ? 'ребёнка' : `${kids} детей`;
+          extras.push(`${male ? 'Отец' : 'Мать'} ${kidsText} (остались снаружи)`);
+        } else {
+          extras.push(this.getRandomItem(['Занимался спортом', 'Отличная физическая форма', 'Есть опыт выживания']));
+        }
+      } else if (Math.random() < 0.25) {
+        extras.push(this.getRandomItem(['Невысокая выносливость', 'Быстро устаёт, но быстро восстанавливается', 'Крепкое телосложение']));
+      }
+      return { sex, age, fertility: [base, ...extras].join('. ') };
+    }
+    return { sex: 'Мужчина', age: 30, fertility: 'Фертилен, хорошая физическая форма' };
   }
 
   private generateCode(): string {
@@ -142,8 +224,13 @@ export class GameEngine {
       votes: {},
       lastExiledPlayerId: null,
       chatMessages: [],
-      revealedCountInRound: 0
+      revealedCountInRound: 0,
+      speakerId: null,
+      speakerQueue: [],
+      speechDuration: 60,
+      speechRemainingMs: 0
     };
+    this.attachSpeechClock(room);
 
     this.rooms[code] = room;
 
@@ -225,6 +312,8 @@ export class GameEngine {
       room.players[newSocketId] = player;
 
       room.turnOrder = room.turnOrder.map(id => (id === oldSocketId ? newSocketId : id));
+      room.speakerQueue = room.speakerQueue.map(id => (id === oldSocketId ? newSocketId : id));
+      if (room.speakerId === oldSocketId) room.speakerId = newSocketId;
       if (room.hostId === oldSocketId) room.hostId = newSocketId;
       if (room.lastExiledPlayerId === oldSocketId) room.lastExiledPlayerId = newSocketId;
 
@@ -256,8 +345,14 @@ export class GameEngine {
         room.turnOrder = room.turnOrder.filter(id => id !== socketId);
 
         if (Object.keys(room.players).length === 0) {
+          this.stopSpeeches(room);
           delete this.rooms[code];
+          delete this.dealMemory[code];
           return { room: null, code };
+        }
+
+        if (room.phase === 'DISCUSSION' && room.speakerId === socketId) {
+          this.advanceSpeaker(room, true);
         }
 
         if (room.hostId === socketId) {
@@ -295,29 +390,53 @@ export class GameEngine {
     if (room.phase !== 'LOBBY' && room.phase !== 'GAME_OVER') return null;
     if (Object.keys(room.players).length < 2) return null;
 
-    // Pick Catastrophe and Shelter
-    room.catastrophe = this.getRandomItem(CATASTROPHES);
-    room.shelter = this.getRandomItem(SHELTERS);
+    this.stopSpeeches(room);
+
+    const mem = this.getMemory(code);
+    mem.games += 1;
+    const game = mem.games;
+    const usedFor = (cat: string) => (mem.used[cat] ||= {});
+
+    // Pick Catastrophe and Shelter (not repeating the previous games' ones
+    // while there are fresher options), then lightly vary their numbers so
+    // even a repeated scenario plays a bit differently.
+    const baseCat = this.createFreshPicker(CATASTROPHES, c => c.id, usedFor('catastrophe'), game)();
+    room.catastrophe = {
+      ...baseCat,
+      destructionPercent: clamp(baseCat.destructionPercent + randInt(-3, 3), 40, 99),
+      survivorsPercent: clamp(baseCat.survivorsPercent + randInt(-1, 2), 1, 30),
+      durationYears: Math.max(2, baseCat.durationYears + randInt(-2, 2))
+    };
+    const baseShelter = this.createFreshPicker(SHELTERS, sh => sh.id, usedFor('shelter'), game)();
+    room.shelter = {
+      ...baseShelter,
+      areaSqM: Math.round(baseShelter.areaSqM * (0.9 + Math.random() * 0.2)),
+      foodWaterYears: Math.max(2, baseShelter.foodWaterYears + randInt(-2, 2)),
+      equipment: this.shuffle(baseShelter.equipment),
+      problems: this.shuffle(baseShelter.problems)
+    };
 
     // Deal Character Cards & Roles
     const playerIds = Object.keys(room.players);
-    room.bunkerCapacity = Math.max(1, Math.floor(playerIds.length / 2));
+    const n = playerIds.length;
+    const baseCapacity = Math.floor(n / 2);
+    const capacityShift = this.getRandomItem([-1, 0, 0, 0, 1]);
+    room.bunkerCapacity = n <= 2 ? 1 : clamp(baseCapacity + capacityShift, 1, n - 1);
 
-    const availableRoles = [...SPECIAL_ROLES];
-
-    // Deal each card category from its own shuffled deck so players in the
-    // same room don't receive duplicate cards unless the room has more
-    // players than the deck has unique entries (only then do decks reshuffle
-    // and start repeating).
-    const pickProfession = this.createDeckPicker(PROFESSIONS);
-    const pickHealth = this.createDeckPicker(HEALTH_STATUSES);
-    const pickBio = this.createDeckPicker(BIOLOGY_DESCS);
-    const pickHobby = this.createDeckPicker(HOBBIES);
-    const pickTrait = this.createDeckPicker(TRAITS);
-    const pickBaggage = this.createDeckPicker(BAGGAGES);
-    const pickSecret = this.createDeckPicker(SECRET_FACTS);
-    const pickCondition = this.createDeckPicker(CONDITIONS);
-    const pickActionCard = this.createDeckPicker(ACTION_CARDS);
+    // Each category deals from its own deck, freshest variants first:
+    // unique within the room (unless the room outgrows the deck) and, across
+    // consecutive games of the same room, not repeating until the whole
+    // deck has been cycled through.
+    const pickRole = this.createFreshPicker(SPECIAL_ROLES, r => r.id, usedFor('role'), game);
+    const pickProfession = this.createFreshPicker(PROFESSIONS, c => c.title, usedFor('profession'), game);
+    const pickHealth = this.createFreshPicker(HEALTH_STATUSES, c => c.title, usedFor('health'), game);
+    const pickHobby = this.createFreshPicker(HOBBIES, c => c.title, usedFor('hobby'), game);
+    const pickTrait = this.createFreshPicker(TRAITS, c => c.title, usedFor('trait'), game);
+    const pickBaggage = this.createFreshPicker(BAGGAGES, c => c.title, usedFor('baggage'), game);
+    const pickSecret = this.createFreshPicker(SECRET_FACTS, c => c.title, usedFor('secret'), game);
+    const pickCondition = this.createFreshPicker(CONDITIONS, c => c.title, usedFor('condition'), game);
+    const pickActionCard = this.createFreshPicker(ACTION_CARDS, c => c.effect, usedFor('action'), game);
+    const takenBio = new Set<string>();
 
     playerIds.forEach(id => {
       const p = room.players[id];
@@ -331,17 +450,11 @@ export class GameEngine {
       p.hasImmunity = false;
       p.voteWeight = 1;
 
-      // Assign random Role
-      const roleIndex = Math.floor(Math.random() * availableRoles.length);
-      p.role = availableRoles[roleIndex] || SPECIAL_ROLES[SPECIAL_ROLES.length - 1];
-      if (availableRoles.length > 1) {
-        availableRoles.splice(roleIndex, 1);
-      }
+      p.role = pickRole();
 
       const prof = pickProfession();
-
       const health = pickHealth();
-      const bio = pickBio();
+      const bio = this.rollBiology(takenBio);
       const hobby = pickHobby();
       const trait = pickTrait();
       const baggage = pickBaggage();
@@ -349,18 +462,21 @@ export class GameEngine {
       const condition = pickCondition();
       const actCard = pickActionCard();
 
-      // Стаж работы (1..24 года) — прибавляется к описанию профессии как
-      // отдельная, но неразрывно связанная с ней характеристика.
-      const stagYears = 1 + Math.floor(Math.random() * 24);
-      const professionDesc = `${prof.desc} Стаж: ${formatYears(stagYears)}.`;
+      // Стаж и квалификация идут вместе с профессией; уровень хобби и
+      // состояние багажа тоже каждый раз выпадают разные — так даже
+      // повторившаяся карта звучит по-новому.
+      const stagYears = randInt(1, 24);
+      const professionDesc = `${prof.desc} Стаж: ${formatYears(stagYears)}. Квалификация: ${profLevel(stagYears)}.`;
+      const hobbyDesc = `${hobby.desc} Уровень: ${this.getRandomItem(HOBBY_LEVELS)}.`;
+      const baggageDesc = `${baggage.desc} Состояние: ${this.getRandomItem(BAGGAGE_STATES)}.`;
 
       p.cards = {
         profession: { id: `prof-${id}`, type: 'profession', title: prof.title, description: professionDesc, isRevealed: false },
         health: { id: `health-${id}`, type: 'health', title: health.title, description: health.desc, isRevealed: false },
-        biology: { id: `bio-${id}`, type: 'biology', title: `${bio.sex}, ${bio.age} лет`, description: bio.fertility, isRevealed: false },
-        hobby: { id: `hobby-${id}`, type: 'hobby', title: hobby.title, description: hobby.desc, isRevealed: false },
+        biology: { id: `bio-${id}`, type: 'biology', title: `${bio.sex}, ${formatYears(bio.age)}`, description: bio.fertility, isRevealed: false },
+        hobby: { id: `hobby-${id}`, type: 'hobby', title: hobby.title, description: hobbyDesc, isRevealed: false },
         trait: { id: `trait-${id}`, type: 'trait', title: trait.title, description: trait.desc, isRevealed: false },
-        baggage: { id: `baggage-${id}`, type: 'baggage', title: baggage.title, description: baggage.desc, isRevealed: false },
+        baggage: { id: `baggage-${id}`, type: 'baggage', title: baggage.title, description: baggageDesc, isRevealed: false },
         secret: { id: `secret-${id}`, type: 'secret', title: secret.title, description: secret.desc, isRevealed: false },
         condition: { id: `cond-${id}`, type: 'condition', title: condition.title, description: condition.desc, isRevealed: false },
         actionCard: { id: `act-${id}`, type: 'actionCard', title: actCard.title, description: actCard.desc, isRevealed: false, meta: { effect: actCard.effect } }
@@ -379,6 +495,79 @@ export class GameEngine {
     return room;
   }
 
+  private getMemory(code: string) {
+    return (this.dealMemory[code] ||= { games: 0, used: {} });
+  }
+
+  // ---------- Очередь выступлений (фаза DISCUSSION) ----------
+
+  private attachSpeechClock(room: RoomState) {
+    Object.defineProperty(room, 'speechRemainingMs', {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        const end = this.speechEnds[room.code];
+        return end ? Math.max(0, end - Date.now()) : 0;
+      }
+    });
+  }
+
+  private stopSpeeches(room: RoomState) {
+    const t = this.speechTimers[room.code];
+    if (t) clearTimeout(t);
+    delete this.speechTimers[room.code];
+    delete this.speechEnds[room.code];
+    room.speakerId = null;
+    room.speakerQueue = [];
+  }
+
+  private startSpeeches(room: RoomState) {
+    this.stopSpeeches(room);
+    const active = room.turnOrder.filter(id => room.players[id] && !room.players[id].isExiled);
+    if (active.length === 0) return;
+    const shift = (room.currentRound - 1) % active.length;
+    room.speakerQueue = [...active.slice(shift), ...active.slice(0, shift)];
+    room.speechDuration = Math.max(10, room.turnDuration);
+    this.advanceSpeaker(room, false);
+  }
+
+  private advanceSpeaker(room: RoomState, notify: boolean) {
+    const old = this.speechTimers[room.code];
+    if (old) clearTimeout(old);
+    delete this.speechTimers[room.code];
+
+    let next: string | undefined;
+    while (room.speakerQueue.length > 0) {
+      const id = room.speakerQueue.shift() as string;
+      if (room.players[id] && !room.players[id].isExiled) { next = id; break; }
+    }
+
+    if (!next) {
+      room.speakerId = null;
+      delete this.speechEnds[room.code];
+      this.addSystemMessage(room, 'Все высказались. Можно обсудить спорные моменты и переходить к голосованию.');
+    } else {
+      room.speakerId = next;
+      const ms = room.speechDuration * 1000;
+      this.speechEnds[room.code] = Date.now() + ms;
+      this.speechTimers[room.code] = setTimeout(() => {
+        const current = this.rooms[room.code];
+        if (!current || current.phase !== 'DISCUSSION' || current.speakerId !== next) return;
+        this.advanceSpeaker(current, true);
+      }, ms + 150);
+    }
+    if (notify && this.onSpeakerChange) this.onSpeakerChange(room);
+  }
+
+  // Говорящий (или хост) досрочно завершает выступление.
+  public endSpeech(code: string, socketId: string): RoomState | null {
+    const room = this.rooms[code];
+    if (!room || room.phase !== 'DISCUSSION' || !room.speakerId) return null;
+    if (socketId !== room.speakerId && socketId !== room.hostId) return null;
+    this.advanceSpeaker(room, true);
+    return room;
+  }
+
   private resetRoundFlags(room: RoomState) {
     Object.values(room.players).forEach(p => {
       p.revealedThisRound = false;
@@ -390,6 +579,8 @@ export class GameEngine {
   public advancePhase(code: string): RoomState | null {
     const room = this.rooms[code];
     if (!room) return null;
+
+    this.stopSpeeches(room);
 
     if (room.phase === 'INTRO') {
       room.phase = 'CARD_REVEAL';
@@ -413,7 +604,8 @@ export class GameEngine {
       }
     } else if (room.phase === 'CARD_REVEAL') {
       room.phase = 'DISCUSSION';
-      this.addSystemMessage(room, `Фаза обсуждения! Убедите группу в своей полезности для бункера.`);
+      this.addSystemMessage(room, `Фаза обсуждения! Каждый выступает по очереди, на слово — ${Math.max(10, room.turnDuration)} сек. Убедите группу в своей полезности для бункера.`);
+      this.startSpeeches(room);
     } else if (room.phase === 'DISCUSSION') {
       if (room.currentRound === 1) {
         // Первый раунд ознакомительный — пропускаем голосование и изгнание,

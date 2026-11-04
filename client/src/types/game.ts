@@ -103,4 +103,10 @@ export interface RoomState {
   lastExiledPlayerId: string | null;
   chatMessages: ChatMessage[];
   revealedCountInRound: number;
+  // Очередь выступлений в фазе обсуждения (управляется сервером).
+  speakerId: string | null;
+  speakerQueue: string[];
+  speechDuration: number;
+  // Сколько мс осталось у говорящего на момент отправки (без зависимости от часов клиента).
+  speechRemainingMs: number;
 }

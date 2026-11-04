@@ -21,12 +21,16 @@ const CARD_TYPE_LABELS: Record<CardType, string> = {
 interface VideoGridProps {
   players: Record<string, Player>;
   currentSocketId: string;
+  speakerId?: string | null;
+  speechSeconds?: number;
   onToggleMedia: (audioMuted: boolean, videoOff: boolean) => void;
 }
 
 export const VideoGrid: React.FC<VideoGridProps> = ({
   players,
   currentSocketId,
+  speakerId = null,
+  speechSeconds = 0,
   onToggleMedia
 }) => {
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
@@ -148,6 +152,8 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
               localVideoRef={isSelf ? localVideoRef : undefined}
               remoteStream={!isSelf ? remoteStream : undefined}
               peerState={!isSelf ? peerStates[player.id] : undefined}
+              isSpeaker={speakerId === player.id}
+              speechSeconds={speechSeconds}
               onCardClick={(card) => setInspected({ playerName: player.name, card })}
             />
           );
@@ -205,6 +211,8 @@ interface PlayerVideoCardProps {
   localVideoRef?: React.RefObject<HTMLVideoElement>;
   remoteStream?: MediaStream;
   peerState?: string;
+  isSpeaker?: boolean;
+  speechSeconds?: number;
   onCardClick: (card: Card) => void;
 }
 
@@ -214,6 +222,8 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
   localVideoRef,
   remoteStream,
   peerState,
+  isSpeaker = false,
+  speechSeconds = 0,
   onCardClick
 }) => {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -252,11 +262,20 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
       className={`relative aspect-video overflow-hidden bg-slate-950 border transition-all ${
         player.isExiled
           ? 'border-red-950 opacity-60 grayscale'
+          : isSpeaker
+          ? 'border-amber-400 ring-2 ring-amber-400 shadow-lg shadow-amber-400/30'
           : isSelf
           ? 'border-amber-500/60 shadow-md shadow-amber-500/10'
           : 'border-slate-800'
       }`}
     >
+      {isSpeaker && (
+        <div className="absolute top-1.5 left-1.5 z-20 flex items-center gap-1 bg-amber-400 text-slate-950 px-2 py-0.5 text-[11px] font-black font-mono notch-sm shadow">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
+          ГОВОРИТ · {speechSeconds}с
+        </div>
+      )}
+
       {/* Video element or Avatar placeholder */}
       {isSelf ? (
         <video

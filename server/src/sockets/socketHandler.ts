@@ -12,6 +12,13 @@ export function registerSocketHandlers(io: Server, gameEngine: GameEngine) {
   // that disconnected. Cleared if that same player reconnects in time.
   const disconnectTimers = new Map<string, NodeJS.Timeout>();
 
+  // Движок сам переключает говорящего по таймеру — здесь только рассылка
+  // состояния и запуск реплик ботов.
+  gameEngine.onSpeakerChange = (room) => {
+    io.to(room.code).emit('room_updated', room);
+    botManager.scheduleBotSpeech(room, gameEngine, io);
+  };
+
   io.on('connection', (socket: Socket) => {
     console.log(`[Socket] Connected: ${socket.id}`);
 
@@ -190,6 +197,11 @@ export function registerSocketHandlers(io: Server, gameEngine: GameEngine) {
           botManager.handlePhaseAutomation(updatedRoom, gameEngine, io);
         }
       }
+    });
+
+    // Досрочное завершение выступления (говорящий или хост)
+    socket.on('end_speech', ({ code }) => {
+      gameEngine.endSpeech(code, socket.id);
     });
 
     // Chat Message

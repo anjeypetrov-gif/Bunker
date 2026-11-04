@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Mic,
   MicOff,
@@ -59,6 +59,12 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
   const [artFailed, setArtFailed] = useState<Partial<Record<CardType, boolean>>>({});
 
   const isHost = room.hostId === currentSocketId;
+  useEffect(() => {
+    const open = () => setDossierOpen(true);
+    window.addEventListener('bunker:open-dossier', open);
+    return () => window.removeEventListener('bunker:open-dossier', open);
+  }, []);
+
   const canReveal = room.phase === 'CARD_REVEAL' && !player.isExiled && !player.revealedThisRound;
 
   const handleToggleMic = () => {
@@ -143,7 +149,7 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
         <div className="flex-1 flex items-center justify-start gap-1.5 py-0.5 md:px-2 min-w-0">
           <button
             onClick={() => setDossierOpen(true)}
-            className="flex-1 md:flex-none justify-center flex items-center gap-1.5 px-3 py-2.5 md:py-1.5 notch-sm border border-amber-500/40 md:border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800 text-xs font-mono cursor-pointer"
+            className={`flex-1 md:flex-none justify-center flex items-center gap-1.5 px-3 py-2.5 md:py-1.5 notch-sm border bg-slate-900 text-slate-300 hover:bg-slate-800 text-xs font-mono cursor-pointer ${canReveal ? "border-amber-400 ring-2 ring-amber-400/70 animate-pulse" : "border-amber-500/40 md:border-slate-700"}`}
             title="Открыть полный планшет персонажа"
           >
             <LayoutGrid className="w-3.5 h-3.5 text-amber-400" />

@@ -133,12 +133,17 @@ const BY_TYPE: Partial<Record<CardType, Record<string, string>>> = {
 /** Returns the /cards/... URL for a card's art, or null if none is mapped. */
 export function getCardArt(type: CardType, title: string): string | null {
   if (type === 'biology') {
-    const match = title.match(/^(.+?),\s*(\d+)\s*лет$/);
+    const match = title.match(/^(.+?),\s*(\d+)\s*(?:лет|года?|год)$/);
     if (!match) return null;
     const sex = match[1];
     const age = parseInt(match[2], 10);
-    const entry = BIOLOGY.find(b => b.sex === sex && b.age === age);
-    return entry ? BASE + entry.file : null;
+    // Ages are random now, so use the portrait of the same sex with the nearest age.
+    let best: { age: number; file: string } | null = null;
+    for (const b of BIOLOGY) {
+      if (b.sex !== sex) continue;
+      if (!best || Math.abs(b.age - age) < Math.abs(best.age - age)) best = b;
+    }
+    return best ? BASE + best.file : null;
   }
   const table = BY_TYPE[type];
   const file = table ? table[title] : undefined;

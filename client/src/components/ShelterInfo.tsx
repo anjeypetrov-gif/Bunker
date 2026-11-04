@@ -76,7 +76,7 @@ export const ShelterInfo: React.FC<ShelterInfoProps> = ({
           )}
 
           {/* Speech Timer */}
-          <div className="flex items-center gap-2 font-mono bg-slate-900 px-3 py-1.5 notch-sm border border-slate-800">
+          <div className={`${room.phase === 'DISCUSSION' ? 'hidden' : 'flex'} items-center gap-2 font-mono bg-slate-900 px-3 py-1.5 notch-sm border border-slate-800`}>
             <Clock className="w-4 h-4 text-amber-400" />
             <span className="text-sm font-bold text-amber-400">{timeLeft}s</span>
           </div>

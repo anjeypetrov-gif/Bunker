@@ -9,6 +9,9 @@ import { ChatPanel } from './components/ChatPanel';
 import { VotingModal } from './components/VotingModal';
 import { GameOver } from './components/GameOver';
 import { BottomControlBar } from './components/BottomControlBar';
+import { SpeechBanner } from './components/SpeechBanner';
+import { HintBar, HelpSheet } from './components/Hints';
+import { useSpeechClock } from './hooks/useSpeechClock';
 import { Shield } from './components/icons';
 import { saveSession, loadSession, clearSession } from './utils/session';
 
@@ -30,6 +33,7 @@ export const App: React.FC = () => {
   const unreadChat = mobileTab === 'chat' ? 0 : Math.max(0, chatCount - seenChatCount);
   // Gates the very first render behind an attempted reconnect, so a page
   // refresh mid-game doesn't flash the join screen before snapping back.
+  const [helpOpen, setHelpOpen] = useState(false);
   const [restoring, setRestoring] = useState<boolean>(() => !!loadSession());
   // Picked once with a lazy initializer, not on every render — this
   // component re-renders on every 'room_updated' (i.e. constantly while
@@ -165,6 +169,12 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleEndSpeech = () => {
+    if (room) {
+      socket.emit('end_speech', { code: room.code });
+    }
+  };
+
   const handleRestart = () => {
     if (room) {
       socket.emit('start_game', { code: room.code });
@@ -181,6 +191,8 @@ export const App: React.FC = () => {
 
   const currentSocketId = socketId || socket.id || '';
   const currentPlayer = room?.players[currentSocketId];
+  // Хуки вызываются до любых return — room может быть null.
+  const speechSeconds = useSpeechClock(room ?? ({ phase: 'LOBBY', speakerId: null, speechRemainingMs: 0 } as any));
 
   // Screen routing
   if (restoring) {
@@ -238,6 +250,10 @@ export const App: React.FC = () => {
         <ShelterInfo room={room} currentSocketId={currentSocketId} onAdvancePhase={handleAdvancePhase} />
       </div>
 
+      <SpeechBanner room={room} currentSocketId={currentSocketId} secondsLeft={speechSeconds} onEndSpeech={handleEndSpeech} />
+      <HintBar room={room} currentSocketId={currentSocketId} onOpenHelp={() => setHelpOpen(true)} />
+      {helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />}
+
       {/* Center Main Area: Left = Cameras Grid, Right = Dedicated Chat Window.
           min-h-0 on this row and both its children is load-bearing, not
           decorative: without it, a flex item's default min-height is "auto"
@@ -277,6 +293,8 @@ export const App: React.FC = () => {
           <VideoGrid
             players={room.players}
             currentSocketId={currentSocketId}
+            speakerId={room.phase === 'DISCUSSION' ? room.speakerId : null}
+            speechSeconds={speechSeconds}
             onToggleMedia={handleToggleMedia}
           />
         </div>

@@ -258,6 +258,39 @@ export class BotManager {
     }, delay);
   }
 
+  // Если сейчас очередь бота — он говорит в чат и завершает выступление
+  // через несколько секунд (не дожидаясь полного таймера).
+  public scheduleBotSpeech(room: RoomState, gameEngine: GameEngine, io: Server) {
+    if (!room || room.phase !== 'DISCUSSION' || !room.speakerId) return;
+    const speakerId = room.speakerId;
+    if (!speakerId.startsWith('bot-')) return;
+    const code = room.code;
+    const totalMs = room.speechDuration * 1000;
+
+    const speakAt = (delay: number) => {
+      setTimeout(() => {
+        const cur = gameEngine.getRoom(code);
+        if (!cur || cur.phase !== 'DISCUSSION' || cur.speakerId !== speakerId) return;
+        const bot = cur.players[speakerId];
+        if (!bot || bot.isExiled) return;
+        gameEngine.addChatMessage(code, speakerId, this.buildDiscussionLine(bot, cur));
+        const updated = gameEngine.getRoom(code);
+        if (updated) io.to(code).emit('room_updated', updated);
+      }, delay);
+    };
+
+    speakAt(1500 + Math.random() * 1000);
+    if (Math.random() < 0.6 && totalMs > 9000) speakAt(Math.min(totalMs - 3000, 5500 + Math.random() * 2500));
+
+    const endIn = Math.min(Math.max(totalMs - 1000, 3000), 7500 + Math.random() * 4000);
+    setTimeout(() => {
+      const cur = gameEngine.getRoom(code);
+      if (cur && cur.phase === 'DISCUSSION' && cur.speakerId === speakerId) {
+        gameEngine.endSpeech(code, speakerId);
+      }
+    }, endIn);
+  }
+
   public handlePhaseAutomation(room: RoomState, gameEngine: GameEngine, io: Server) {
     if (!room) return;
     if (room.phase !== 'VOTING') this.votingScheduled.delete(room.code);
@@ -286,34 +319,11 @@ export class BotManager {
       });
     }
 
-    // 2. DISCUSSION Phase — несколько ботов высказываются по очереди
-    // (а не один случайный бот раз в раунд), каждый строит реплику из
-    // реальных данных партии: своих раскрытых карт, других игроков,
-    // катастрофы/бункера, карты "Условие/бонус" или последней реплики в
-    // чате — получается что-то похожее на настоящий спор, а не один и
-    // тот же набор из 6 заготовленных фраз.
+    // 2. DISCUSSION Phase — выступления идут по очереди (очередь и таймер
+    // ведёт GameEngine); если сейчас говорит бот, он произносит реплику
+    // из реальных данных партии и сам завершает выступление.
     if (room.phase === 'DISCUSSION') {
-      const speakerCount = Math.min(
-        activeBots.length,
-        activeBots.length <= 4 ? activeBots.length : 3 + Math.floor(Math.random() * 2)
-      );
-      const speakers = this.shuffle(activeBots).slice(0, speakerCount);
-
-      speakers.forEach((bot, idx) => {
-        const delay = 1800 + idx * (2000 + Math.random() * 1000);
-        setTimeout(() => {
-          const currentRoom = gameEngine.getRoom(room.code);
-          if (!currentRoom || currentRoom.phase !== 'DISCUSSION') return;
-
-          const currentBot = currentRoom.players[bot.id];
-          if (!currentBot || currentBot.isExiled) return;
-
-          const line = this.buildDiscussionLine(currentBot, currentRoom);
-          gameEngine.addChatMessage(room.code, bot.id, line);
-          const updated = gameEngine.getRoom(room.code);
-          if (updated) io.to(room.code).emit('room_updated', updated);
-        }, delay);
-      });
+      this.scheduleBotSpeech(room, gameEngine, io);
     }
 
     // 3. VOTING Phase — голосует и в большинстве случаев объясняет выбор
