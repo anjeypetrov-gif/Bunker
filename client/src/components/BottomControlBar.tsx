@@ -171,13 +171,13 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
         <div className="flex-1 flex items-center justify-start gap-1.5 py-0.5 md:px-2 min-w-0">
           <button
             onClick={() => setDossierOpen(true)}
-            className={`flex-1 md:flex-none justify-center flex items-center gap-1.5 px-3 py-2.5 md:py-1.5 notch-sm border bg-slate-900 text-slate-300 hover:bg-slate-800 text-xs font-mono cursor-pointer ${canReveal ? "border-amber-400 ring-2 ring-amber-400/70 animate-pulse" : "border-amber-500/40 md:border-slate-700"}`}
+            className={`relative min-w-0 flex-1 md:flex-none justify-center flex items-center gap-1.5 px-2 sm:px-3 py-2.5 md:py-1.5 notch-sm border bg-slate-900 text-slate-300 hover:bg-slate-800 text-xs font-mono cursor-pointer ${canReveal ? "border-amber-400 ring-2 ring-amber-400/70 animate-pulse" : "border-amber-500/40 md:border-slate-700"}`}
             title="Открыть полный планшет персонажа"
           >
-            <LayoutGrid className="w-3.5 h-3.5 text-amber-400" />
-            <span>ПЛАНШЕТ</span>
+            <LayoutGrid className="hidden min-[480px]:block w-3.5 h-3.5 text-amber-400" />
+            <span className="truncate">ПЛАНШЕТ</span>
             {actionCard && !player.actionCardUsed && (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse ml-0.5" title="Доступна спецкарта" />
+              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Доступна спецкарта" />
             )}
           </button>
         </div>
