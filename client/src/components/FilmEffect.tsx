@@ -2,8 +2,10 @@ import React, { useEffect, useRef } from 'react';
 
 /**
  * Эффект старой киноплёнки поверх фона: зерно, мерцание, царапины, пыль, виньетка.
- * Чисто декоративный слой (pointer-events: none). При prefers-reduced-motion
- * остаётся только статичная виньетка.
+ * Чисто декоративный слой (pointer-events: none). Зерно и царапины не мигают, поэтому
+ * работают всегда (в Windows с выключенными «эффектами анимации» браузер сообщает
+ * prefers-reduced-motion, и раньше из-за этого эффект пропадал). При reduced-motion
+ * отключаются только мерцание и дрожание кадра.
  */
 export const FilmEffect: React.FC = () => {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -11,7 +13,6 @@ export const FilmEffect: React.FC = () => {
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -73,7 +74,7 @@ export const FilmEffect: React.FC = () => {
         @keyframes film-flick{0%{opacity:.05}8%{opacity:.14}15%{opacity:.03}31%{opacity:.1}44%{opacity:.04}57%{opacity:.16}70%{opacity:.05}84%{opacity:.11}100%{opacity:.05}}
         @keyframes film-scr{0%{opacity:.7;transform:translateX(0)}6%{opacity:.4;transform:translateX(3px)}12%{opacity:0}100%{opacity:0}}
         @keyframes film-weave{0%{transform:translate(0,0)}25%{transform:translate(1px,-1px)}50%{transform:translate(-1px,0)}75%{transform:translate(0,1px)}100%{transform:translate(0,0)}}
-        @media (prefers-reduced-motion:reduce){.film-fx .flick,.film-fx .scr,.film-fx .weave{animation:none;opacity:0}}
+        @media (prefers-reduced-motion:reduce){.film-fx .flick,.film-fx .weave{animation:none;opacity:0}}
       `}</style>
       <canvas ref={ref} />
       <div className="flick" />
