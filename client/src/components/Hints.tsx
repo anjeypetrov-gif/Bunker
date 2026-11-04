@@ -81,7 +81,7 @@ export const HintBar: React.FC<HintProps> = ({ room, currentSocketId, onOpenHelp
   }
 
   return (
-    <div className="shrink-0 mx-2.5 mt-2 p-2 notch-sm border border-sky-500/30 bg-sky-950/30 text-[11px] md:text-xs font-sans text-sky-100 flex items-start gap-2">
+    <div className="shrink-0 mx-2.5 mt-2 p-2 notch-sm border border-sky-500/30 [@media(max-height:760px)]:hidden bg-sky-950/30 text-[11px] md:text-xs font-sans text-sky-100 flex items-start gap-2">
       <span className="text-sky-300 font-black font-mono shrink-0">ПОДСКАЗКА</span>
       <span className="flex-1 leading-snug">{text}</span>
       {action && (

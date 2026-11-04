@@ -26,3 +26,7 @@ Thumbs.db
 # Stray local archives — not part of the project source
 *.zip
 *.tgz
+
+# Снимок состояния и статистика сервера
+server/data/
+data/

@@ -1,11 +1,12 @@
 import { Server, Socket } from 'socket.io';
 import { GameEngine } from '../game/GameEngine';
 import { botManager } from '../game/BotManager';
+import { stats } from '../stats';
 
 // How long a disconnected player's slot is kept warm before they're
 // actually removed from the room. Covers page refreshes and brief network
 // drops — both disconnect and reconnect the socket, just very quickly.
-const RECONNECT_GRACE_MS = 20000;
+export const RECONNECT_GRACE_MS = 20000;
 
 export function registerSocketHandlers(io: Server, gameEngine: GameEngine) {
   // Pending "actually remove this player" timers, keyed by the socket id
@@ -25,6 +26,7 @@ export function registerSocketHandlers(io: Server, gameEngine: GameEngine) {
     // Create Room
     socket.on('create_room', ({ name, avatar }, callback) => {
       const { room, sessionToken } = gameEngine.createRoom(socket.id, name, avatar);
+      stats.room();
       socket.join(room.code);
       if (typeof callback === 'function') callback({ success: true, room, sessionToken });
       io.to(room.code).emit('room_updated', room);

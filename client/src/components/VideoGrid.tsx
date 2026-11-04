@@ -143,7 +143,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
       </div>
 
       {/* Grid of Players */}
-      <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 overflow-y-auto pr-1 content-start">
+      <div className="flex-1 min-h-0 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 overflow-y-auto pr-1 content-start auto-rows-max">
         {playerList.map(player => {
           const isSelf = player.id === currentSocketId;
           const remoteStream = remoteStreams[player.id];

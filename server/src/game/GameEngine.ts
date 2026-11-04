@@ -345,7 +345,7 @@ export class GameEngine {
         delete room.players[socketId];
         room.turnOrder = room.turnOrder.filter(id => id !== socketId);
 
-        if (Object.keys(room.players).length === 0) {
+        if (Object.values(room.players).every(p => p.id.startsWith('bot-'))) {
           this.stopSpeeches(room);
           delete this.rooms[code];
           delete this.dealMemory[code];
@@ -493,6 +493,7 @@ export class GameEngine {
     delete this.pausedLeft[room.code];
     delete this.eventsUsed[room.code];
     room.phase = 'INTRO';
+    if (this.onGameStart) this.onGameStart(room);
     room.currentRound = 1;
     room.activePlayerIndex = 0;
     room.revealedCountInRound = 0;
@@ -505,6 +506,57 @@ export class GameEngine {
   }
 
   // ---------- Очередь выступлений (фаза DISCUSSION) ----------
+
+  public onGameStart?: (room: RoomState) => void;
+  public onGameOver?: (room: RoomState) => void;
+
+  // ---- Сохранение / восстановление состояния (см. persistence.ts) ----
+  public exportState() {
+    return {
+      savedAt: Date.now(),
+      rooms: this.rooms,
+      tokenMap: this.tokenMap,
+      dealMemory: this.dealMemory,
+      eventsUsed: this.eventsUsed,
+    };
+  }
+
+  /** Возвращает число восстановленных комнат. Игры в процессе ставятся на паузу. */
+  public importState(snap: any): number {
+    let n = 0;
+    this.tokenMap = snap.tokenMap || {};
+    this.dealMemory = snap.dealMemory || {};
+    this.eventsUsed = snap.eventsUsed || {};
+    for (const code of Object.keys(snap.rooms || {})) {
+      const room: RoomState = snap.rooms[code];
+      if (!room || !room.players) continue;
+      const left = Number((room as any).speechRemainingMs) || 0;
+      delete (room as any).speechRemainingMs;
+      this.attachSpeechClock(room);
+      Object.values(room.players).forEach(p => { if (!p.id.startsWith('bot-')) p.isConnected = false; });
+      if (['CARD_REVEAL', 'DISCUSSION', 'VOTING'].includes(room.phase)) {
+        room.paused = true;
+        if (room.phase === 'DISCUSSION' && room.speakerId) {
+          this.pausedLeft[code] = left > 0 ? left : room.speechDuration * 1000;
+        }
+        this.addSystemMessage(room, '♻ Сервер перезапускался. Игра на паузе: хост, нажмите «Продолжить», когда все вернутся.');
+      }
+      this.rooms[code] = room;
+      n++;
+    }
+    return n;
+  }
+
+  /** Игроки, которые так и не вернулись после перезапуска. */
+  public listOfflineHumans(): Array<{ code: string; id: string }> {
+    const out: Array<{ code: string; id: string }> = [];
+    for (const code in this.rooms) {
+      for (const p of Object.values(this.rooms[code].players)) {
+        if (!p.id.startsWith('bot-') && !p.isConnected) out.push({ code, id: p.id });
+      }
+    }
+    return out;
+  }
 
   private pausedLeft: Record<string, number> = {};
 
@@ -612,8 +664,8 @@ export class GameEngine {
       room.paused = false;
       const left = this.pausedLeft[code];
       delete this.pausedLeft[code];
-      if (left != null && room.speakerId && room.phase === 'DISCUSSION') {
-        this.armSpeechTimer(room, room.speakerId, left);
+      if (room.speakerId && room.phase === 'DISCUSSION') {
+        this.armSpeechTimer(room, room.speakerId, left ?? room.speechDuration * 1000);
       }
       this.addSystemMessage(room, '▶ Игра продолжается.');
     }
@@ -690,6 +742,7 @@ export class GameEngine {
       const activePlayers = Object.values(room.players).filter(p => !p.isExiled);
       if (activePlayers.length <= room.bunkerCapacity) {
         room.phase = 'GAME_OVER';
+        if (this.onGameOver) this.onGameOver(room);
         this.addSystemMessage(room, `Игра завершена! Бункер запечатан. Оставшиеся выжившие отправляются восстанавливать цивилизацию.`);
       } else {
         room.currentRound += 1;
