@@ -1,0 +1,14 @@
+{
+  "appId": "ru.bunkerpro.game",
+  "appName": "Бункер",
+  "webDir": "www",
+  "server": {
+    "url": "https://24bunkerpro.ru",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#0b0e14"
+  }
+}

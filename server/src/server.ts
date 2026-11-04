@@ -113,6 +113,12 @@ ${days.map(d => `<tr><td>${d}</td><td>${s.days[d].visits}</td><td>${s.days[d].ro
 ${recentErrors.slice(0, 30).map(e => `<pre><b>${esc(e.t)}</b> ${esc(e.msg)}\n${esc(e.url || '')}\n${esc(e.ua || '')}\n${esc(e.stack || '')}</pre>`).join('') || '<p class="k">Пока ошибок нет.</p>'}`);
 });
 
+// Политика конфиденциальности (нужна магазинам приложений). Дублируем под /api/, потому что
+// Timeweb может отдавать SPA вместо статики на путях вне /api.
+app.get(['/api/privacy', '/privacy'], (_req, res) => {
+  res.sendFile(path.join(clientDist, 'privacy.html'), err => { if (err) res.status(404).end(); });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });

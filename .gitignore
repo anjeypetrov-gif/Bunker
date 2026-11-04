@@ -30,3 +30,8 @@ Thumbs.db
 # Снимок состояния и статистика сервера
 server/data/
 data/
+
+# Android-обёртка
+android-app/node_modules/
+*.keystore
+*.jks
