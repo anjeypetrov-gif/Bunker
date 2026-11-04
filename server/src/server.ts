@@ -92,8 +92,8 @@ const adminOk = (req: express.Request): boolean => {
 };
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 
-// Панель администратора: /admin?token=<ADMIN_TOKEN> (если ADMIN_TOKEN не задан — страница недоступна)
-app.get('/admin', (req, res) => {
+// Панель администратора: /api/admin?token=<ADMIN_TOKEN> (если ADMIN_TOKEN не задан — страница недоступна)
+app.get(['/api/admin', '/admin'], (req, res) => {
   if (!adminOk(req)) return res.status(404).send('Not found');
   const s = stats.get();
   const days = Object.keys(s.days).sort().reverse().slice(0, 14);
