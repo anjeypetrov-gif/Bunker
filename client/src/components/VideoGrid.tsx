@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { Mic, MicOff, Video, VideoOff, Skull, Crown, ShieldCheck, Eye, X } from './icons';
 import { Card, CardType, Player } from '../types/game';
 import { webRTCManager } from '../services/webrtc';
-import { socket } from '../services/socket';
 import { getCardArt } from '../data/cardArt';
 import { getBotAvatarArt, getBotAvatarVideo } from '../data/botAvatars';
 
@@ -55,43 +54,34 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
       }
     );
 
-    const handleUserJoined = ({ socketId }: { socketId: string }) => {
-      // Existing peers initiate the connection towards the newcomer.
-      webRTCManager.createPeer(socketId, true);
-    };
-    const handleReceiveSignal = ({ callerId, signalData }: { callerId: string; signalData: any }) => {
-      webRTCManager.handleIncomingSignal(callerId, signalData);
-    };
-    const handleSignalReturned = ({ id, signalData }: { id: string; signalData: any }) => {
-      webRTCManager.handleIncomingSignal(id, signalData);
-    };
-    const handleUserLeft = ({ socketId }: { socketId: string }) => {
-      webRTCManager.removePeer(socketId);
-    };
-
-    // Only start signaling once our own local stream (camera/mic or the
-    // fallback dummy stream) is ready, so outgoing offers already carry tracks.
+    // Только локальный поток: сигналинг (offer/answer/candidate) обрабатывает
+    // сам webRTCManager, а соединения создаёт syncPeers (см. эффект ниже).
     webRTCManager.getLocalStream(true, true).then(stream => {
       if (!mounted) return;
       if (stream && localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
-
-      socket.on('user_joined_webrtc', handleUserJoined);
-      socket.on('receive_signal', handleReceiveSignal);
-      socket.on('signal_returned', handleSignalReturned);
-      socket.on('user_left_webrtc', handleUserLeft);
     });
 
     return () => {
       mounted = false;
-      socket.off('user_joined_webrtc', handleUserJoined);
-      socket.off('receive_signal', handleReceiveSignal);
-      socket.off('signal_returned', handleSignalReturned);
-      socket.off('user_left_webrtc', handleUserLeft);
       webRTCManager.destroy();
     };
   }, []);
+
+  // Подключаемся ко всем живым игрокам при входе в игру и при любом изменении состава
+  // (вход, выход, переподключение с новым socket.id).
+  const peerKey = Object.values(players)
+    .filter(p => !p.id.startsWith('bot-') && p.isConnected !== false)
+    .map(p => p.id)
+    .sort()
+    .join(',');
+  useEffect(() => {
+    webRTCManager.getLocalStream(true, true).then(() => {
+      webRTCManager.syncPeers(currentSocketId, Object.values(players));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peerKey, currentSocketId]);
 
   const handleToggleAudio = () => {
     const nextMuted = !audioMuted;
