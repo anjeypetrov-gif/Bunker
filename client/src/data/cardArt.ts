@@ -130,6 +130,76 @@ const BY_TYPE: Partial<Record<CardType, Record<string, string>>> = {
   actionCard: ACTION,
 };
 
+
+// Нет своей картинки — берём похожую по смыслу из библиотеки.
+// Когда появится собственное изображение, добавьте карту в таблицы выше: точное совпадение приоритетнее.
+const SIMILAR: Partial<Record<CardType, Record<string, string>>> = {
+  profession: {
+    'Медсестра-реаниматолог': 'profession-vrach-khirurg.png',
+    'Геолог-шахтёр': 'profession-stroitel-kamenshchik.png',
+    'Радиоинженер связи': 'profession-programmist-robototekhnik.png',
+    'Биотехнолог-селекционер': 'profession-agronom-bioekolog.png',
+    'Оператор дронов': 'profession-programmist-robototekhnik.png',
+    'Пекарь-кондитер': 'profession-povar-tekhnolog.png',
+    'Юрист-арбитр': 'profession-psikhoterapevt.png',
+    'Механик-дизелист': 'profession-mekhanik-avtotransporta.png',
+    'Эколог-гидролог': 'profession-inzhener-gidrotekhnik.png',
+    'Инструктор по выживанию': 'profession-ofitser-takticheskoy-razvedki.png',
+    'Стоматолог': 'profession-vrach-khirurg.png',
+    'Логист-кладовщик': 'profession-mekhanik-avtotransporta.png',
+  },
+  health: {
+    'Аллергия на пыльцу': 'health-legkaya-astma.png',
+    'Мигрени': 'health-miopiya-3-5.png',
+    'Гипертония (под контролем)': 'health-sakharnyy-diabet-1-tip.png',
+    'Железный желудок': 'health-vysokiy-immunitet-k-infektsiyam.png',
+    'Бессонница': 'health-khronicheskiy-gastrit.png',
+    'Протез колена': 'health-perelom-ruki-v-gipse.png',
+    'Острый слух и зрение': 'health-idealno-zdorov.png',
+    'Слабое сердце': 'health-sakharnyy-diabet-1-tip.png',
+  },
+  hobby: {
+    'Скалолазание': 'hobby-rukopashnyy-boy-sambo.png',
+    'Кулинария и консервация': 'hobby-sadovodstvo-i-gidroponika.png',
+    'Паяние и электроника': 'hobby-radiolyubitelstvo.png',
+    'Вязание и плетение': 'hobby-shite-i-remont-odezhdy.png',
+    'Картография и ориентирование': 'hobby-shakhmaty-i-strategiya.png',
+    'Пчеловодство': 'hobby-sadovodstvo-i-gidroponika.png',
+    'Йога и медитация': 'hobby-igra-na-gitare-i-penie.png',
+    'Иностранные языки': 'hobby-shakhmaty-i-strategiya.png',
+  },
+  trait: {
+    'Дипломат': 'trait-liderskie-kachestva.png',
+    'Вспыльчивый': 'trait-paranoik.png',
+    'Щедрый': 'trait-optimist.png',
+    'Скрытный': 'trait-skromnyy-i-molchalivyy.png',
+    'Любопытный': 'trait-khladnokrovnyy-analitik.png',
+    'Упрямый': 'trait-pedant.png',
+    'Сострадательный': 'trait-optimist.png',
+    'Азартный': 'trait-trudogolik.png',
+  },
+  baggage: {
+    'Расширенная аптечка': 'baggage-nabor-khirurgicheskikh-instrumentov.png',
+    'Рация дальнего действия': 'baggage-solnechnaya-panel-100w-pauerbank.png',
+    'Тёплые спальники (4 шт.)': 'baggage-armeyskiy-sukhoy-paek-na-1-mesyats.png',
+    'Топор и мультитул': 'baggage-skladnaya-yashchik-instrumentov-mekhanika.png',
+    'Ручной насос-фильтр для воды': 'baggage-nabor-filtrov-dlya-ochistki-vody.png',
+    'Запас противовирусных препаратов': 'baggage-nabor-khirurgicheskikh-instrumentov.png',
+    'Книги по выживанию и ремёслам': 'baggage-nabor-semyan-ovoshchey-i-zlakov.png',
+    'Настольные игры и карты': 'baggage-elektroakusticheskaya-gitara.png',
+  },
+  secret: {
+    'Тайно носит нож': 'secret-skrytyy-zapas-oruzhiya.png',
+    'Прячет запас шоколада': 'secret-taynyy-immunitet.png',
+    'Знает шифр от склада': 'secret-znaet-inzhenernyy-plan-bunkera.png',
+    'Работал на разведку': 'secret-sluzhil-v-spetsnaze.png',
+    'Приукрасил возраст': 'secret-falshivyy-diplom.png',
+    'Потерял близких': 'secret-spas-5-chelovek.png',
+    'Видел начало катастрофы': 'secret-znaet-inzhenernyy-plan-bunkera.png',
+    'Умеет лечить травами': 'secret-taynyy-immunitet.png',
+  },
+};
+
 /** Returns the /cards/... URL for a card's art, or null if none is mapped. */
 export function getCardArt(type: CardType, title: string): string | null {
   if (type === 'biology') {
@@ -146,6 +216,6 @@ export function getCardArt(type: CardType, title: string): string | null {
     return best ? BASE + best.file : null;
   }
   const table = BY_TYPE[type];
-  const file = table ? table[title] : undefined;
+  const file = (table ? table[title] : undefined) ?? SIMILAR[type]?.[title];
   return file ? BASE + file : null;
 }
