@@ -30,8 +30,10 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
   onToggleMedia
 }) => {
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
-  const [audioMuted, setAudioMuted] = useState(false);
-  const [videoOff, setVideoOff] = useState(false);
+  // Состояние микрофона/камеры берём из комнаты (единый источник для всех панелей).
+  const me = players[currentSocketId];
+  const audioMuted = !!me?.audioMuted;
+  const videoOff = !!me?.videoOff;
   const [inspected, setInspected] = useState<{ playerName: string; card: Card } | null>(null);
   const [inspectedArtFailed, setInspectedArtFailed] = useState<Record<string, boolean>>({});
 
@@ -84,30 +86,24 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
   }, [peerKey, currentSocketId]);
 
   const handleToggleAudio = () => {
-    const nextMuted = !audioMuted;
-    setAudioMuted(nextMuted);
-    webRTCManager.toggleAudio(!nextMuted);
-    onToggleMedia(nextMuted, videoOff);
+    onToggleMedia(!audioMuted, videoOff);
   };
 
   const handleToggleVideo = () => {
-    const nextVideoOff = !videoOff;
-    setVideoOff(nextVideoOff);
-    webRTCManager.toggleVideo(!nextVideoOff);
-    onToggleMedia(audioMuted, nextVideoOff);
+    onToggleMedia(audioMuted, !videoOff);
   };
 
   const playerList = Object.values(players);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-slate-900/80 border border-slate-800 notch p-3.5 shadow-2xl">
+    <div className="flex flex-col h-full overflow-hidden bg-slate-900/80 border border-slate-800 notch p-2.5 md:p-3.5 shadow-2xl">
       <div className="flex items-center justify-between mb-2.5 border-b border-slate-800 pb-2 shrink-0">
         <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2 font-mono">
-          <Video className="w-4 h-4 text-amber-400" /> ТРАНСЛЯЦИЯ ИЗ КАМЕР БУНКЕРА ({playerList.length})
+          <Video className="w-4 h-4 text-amber-400" /> <span className="hidden sm:inline">ТРАНСЛЯЦИЯ ИЗ КАМЕР БУНКЕРА</span><span className="sm:hidden">КАМЕРЫ</span> ({playerList.length})
         </h3>
 
-        {/* Local Quick Media Controls */}
-        <div className="flex items-center gap-2">
+        {/* Local Quick Media Controls (на телефоне — только в нижней панели) */}
+        <div className="hidden md:flex items-center gap-2">
           <button
             onClick={handleToggleAudio}
             className={`p-1.5 px-2.5 notch-sm text-xs font-mono font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
@@ -131,7 +127,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
       </div>
 
       {/* Grid of Players */}
-      <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 overflow-y-auto pr-1">
+      <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 overflow-y-auto pr-1 content-start">
         {playerList.map(player => {
           const isSelf = player.id === currentSocketId;
           const remoteStream = remoteStreams[player.id];

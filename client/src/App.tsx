@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { webRTCManager } from './services/webrtc';
 import { socket } from './services/socket';
 import { RoomState, CardType } from './types/game';
 import { Lobby } from './components/Lobby';
@@ -19,6 +20,14 @@ const ENTRY_BACKGROUNDS = ['/backgrounds/main.jpg', '/backgrounds/main2.jpg'];
 export const App: React.FC = () => {
   const [room, setRoom] = useState<RoomState | null>(null);
   const [socketId, setSocketId] = useState<string>('');
+  // Mobile (<md): камеры и чат переключаются вкладками вместо двух колонок.
+  const [mobileTab, setMobileTab] = useState<'players' | 'chat'>('players');
+  const [seenChatCount, setSeenChatCount] = useState(0);
+  const chatCount = room?.chatMessages?.length ?? 0;
+  useEffect(() => {
+    if (mobileTab === 'chat') setSeenChatCount(chatCount);
+  }, [mobileTab, chatCount]);
+  const unreadChat = mobileTab === 'chat' ? 0 : Math.max(0, chatCount - seenChatCount);
   // Gates the very first render behind an attempted reconnect, so a page
   // refresh mid-game doesn't flash the join screen before snapping back.
   const [restoring, setRestoring] = useState<boolean>(() => !!loadSession());
@@ -148,6 +157,9 @@ export const App: React.FC = () => {
   };
 
   const handleToggleMedia = (audioMuted: boolean, videoOff: boolean) => {
+    // Реально включаем/выключаем дорожки — единая точка для обеих панелей.
+    webRTCManager.toggleAudio(!audioMuted);
+    webRTCManager.toggleVideo(!videoOff);
     if (room) {
       socket.emit('toggle_media', { code: room.code, audioMuted, videoOff });
     }
@@ -220,7 +232,7 @@ export const App: React.FC = () => {
 
   // Unified Single Screen Layout (Единый экран игры)
   return (
-    <div className="h-screen w-screen bg-[#0b0e14] text-slate-100 flex flex-col overflow-hidden select-none">
+    <div className="h-[100dvh] w-screen bg-[#0b0e14] text-slate-100 flex flex-col overflow-hidden select-none">
       {/* Top Header: Compact Shelter Status Banner */}
       <div className="shrink-0 p-2.5 pb-0">
         <ShelterInfo room={room} currentSocketId={currentSocketId} onAdvancePhase={handleAdvancePhase} />
@@ -237,9 +249,31 @@ export const App: React.FC = () => {
           autoscroll-to-latest-message then drags this WHOLE row (video grid
           included) up to reveal the new message, clipping the video grid's
           own header and top row of tiles above the viewport. */}
+      {/* Mobile tab switcher: cameras / chat */}
+      <div className="md:hidden shrink-0 grid grid-cols-2 gap-2 px-2.5 pt-2">
+        {([['players', 'ИГРОКИ'], ['chat', 'ЧАТ']] as const).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setMobileTab(key)}
+            className={`py-2 notch-sm border text-xs font-mono font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors ${
+              mobileTab === key
+                ? 'bg-amber-500/15 border-amber-500/60 text-amber-300'
+                : 'bg-slate-900 border-slate-800 text-slate-400'
+            }`}
+          >
+            {label}
+            {key === 'chat' && unreadChat > 0 && (
+              <span className="bg-amber-500 text-slate-950 text-[10px] font-black px-1.5 min-w-[18px] rounded-full">
+                {unreadChat > 99 ? '99+' : unreadChat}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
       <div className="flex-1 flex overflow-hidden p-2.5 gap-2.5 min-h-0">
         {/* Participants Video Grid */}
-        <div className="flex-1 h-full min-w-0 min-h-0">
+        <div className={`flex-1 h-full min-w-0 min-h-0 ${mobileTab === 'chat' ? 'hidden md:block' : ''}`}>
           <VideoGrid
             players={room.players}
             currentSocketId={currentSocketId}
@@ -248,7 +282,7 @@ export const App: React.FC = () => {
         </div>
 
         {/* Dedicated Chat Window (Right Sidebar) */}
-        <div className="w-80 lg:w-96 shrink-0 hidden md:flex flex-col h-full min-h-0">
+        <div className={`${mobileTab === 'chat' ? 'flex' : 'hidden'} md:flex w-full md:w-80 lg:w-96 md:shrink-0 flex-col h-full min-h-0`}>
           <ChatPanel
             messages={room.chatMessages || []}
             onSendMessage={handleSendMessage}

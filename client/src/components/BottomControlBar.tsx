@@ -50,8 +50,9 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
   onAdvancePhase,
   onLeaveGame
 }) => {
-  const [audioMuted, setAudioMuted] = useState(player.audioMuted || false);
-  const [videoOff, setVideoOff] = useState(player.videoOff || false);
+  // Единый источник состояния — данные игрока из комнаты (синхронно с панелью камер).
+  const audioMuted = !!player.audioMuted;
+  const videoOff = !!player.videoOff;
   const [actionCardOpen, setActionCardOpen] = useState(false);
   const [actionTarget, setActionTarget] = useState<string | null>(null);
   const [dossierOpen, setDossierOpen] = useState(false);
@@ -61,15 +62,11 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
   const canReveal = room.phase === 'CARD_REVEAL' && !player.isExiled && !player.revealedThisRound;
 
   const handleToggleMic = () => {
-    const nextMuted = !audioMuted;
-    setAudioMuted(nextMuted);
-    onToggleMedia(nextMuted, videoOff);
+    onToggleMedia(!audioMuted, videoOff);
   };
 
   const handleToggleCam = () => {
-    const nextCamOff = !videoOff;
-    setVideoOff(nextCamOff);
-    onToggleMedia(audioMuted, nextCamOff);
+    onToggleMedia(audioMuted, !videoOff);
   };
 
   const actionCard = player.cards.actionCard;
@@ -93,10 +90,10 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
 
   return (
     <>
-      <div className="bg-slate-950 border-t border-slate-800 p-2.5 px-4 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-2xl z-20">
+      <div className="bg-slate-950 border-t border-slate-800 p-2 px-2.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:p-2.5 md:px-4 flex md:flex-wrap items-center justify-between gap-2 md:gap-3 shrink-0 shadow-2xl z-20">
 
         {/* Left: Media Toggles & Profile Status */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 md:gap-2">
           <button
             onClick={handleToggleMic}
             className={`p-2.5 notch-sm border flex items-center gap-1.5 text-xs font-mono font-bold transition-all cursor-pointer ${
@@ -143,10 +140,10 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
         </div>
 
         {/* Center: Character Dossier Access */}
-        <div className="flex-1 flex items-center justify-start gap-1.5 py-0.5 px-2 min-w-0">
+        <div className="flex-1 flex items-center justify-start gap-1.5 py-0.5 md:px-2 min-w-0">
           <button
             onClick={() => setDossierOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 notch-sm border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800 text-xs font-mono shrink-0 cursor-pointer"
+            className="flex-1 md:flex-none justify-center flex items-center gap-1.5 px-3 py-2.5 md:py-1.5 notch-sm border border-amber-500/40 md:border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800 text-xs font-mono cursor-pointer"
             title="Открыть полный планшет персонажа"
           >
             <LayoutGrid className="w-3.5 h-3.5 text-amber-400" />
@@ -162,13 +159,13 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
           {isHost ? (
             <button
               onClick={onAdvancePhase}
-              className="py-2.5 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider notch-sm shadow-lg shadow-amber-500/20 flex items-center gap-2 cursor-pointer transition-all active:scale-98 font-mono"
+              className="py-2.5 px-3 md:px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider notch-sm shadow-lg shadow-amber-500/20 flex items-center gap-2 cursor-pointer transition-all active:scale-98 font-mono"
             >
-              <span>СЛЕДУЮЩИЙ ЭТАП</span>
+              <span className="hidden sm:inline">СЛЕДУЮЩИЙ ЭТАП</span><span className="sm:hidden">ДАЛЕЕ</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           ) : (
-            <div className="px-3 py-1.5 bg-slate-900 border border-slate-800 text-slate-400 font-mono text-xs notch-sm flex items-center gap-1.5">
+            <div className="hidden sm:flex px-3 py-1.5 bg-slate-900 border border-slate-800 text-slate-400 font-mono text-xs notch-sm items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
               <span>ИГРА ИДЕТ</span>
             </div>
