@@ -38,10 +38,18 @@ export const Lobby: React.FC<LobbyProps> = ({
 }) => {
 
   const [name, setName] = useState('');
-  const [roomCodeInput, setRoomCodeInput] = useState('');
+  // Ссылка-приглашение: /?room=ABC123 сразу открывает форму входа с готовым кодом.
+  const inviteCode = (() => {
+    try {
+      const c = new URLSearchParams(window.location.search).get('room') || '';
+      return /^[A-Za-z0-9]{6}$/.test(c) ? c.toUpperCase() : '';
+    } catch { return ''; }
+  })();
+  const [roomCodeInput, setRoomCodeInput] = useState(inviteCode);
+  const [copied, setCopied] = useState(false);
   const [selectedAvatar, setSelectedAvatar] = useState('avatar-1');
   const [helpOpen, setHelpOpen] = useState(false);
-  const [joinMode, setJoinMode] = useState<'CHOICE' | 'CREATE' | 'JOIN'>('CHOICE');
+  const [joinMode, setJoinMode] = useState<'CHOICE' | 'CREATE' | 'JOIN'>(inviteCode ? 'JOIN' : 'CHOICE');
 
   const isHost = room && room.hostId === currentSocketId;
   const playersCount = room ? Object.keys(room.players).length : 0;
@@ -62,6 +70,26 @@ export const Lobby: React.FC<LobbyProps> = ({
             <div>
               <h2 className="text-2xl font-black tracking-wider text-slate-100 uppercase font-display">ШЛЮЗ БУНКЕРА</h2>
               <p className="text-xs text-slate-400 font-mono">КОД КОМНАТЫ: <span className="text-amber-400 font-bold text-base px-2 py-0.5 bg-amber-500/10 border border-amber-500/30 notch-sm">{room.code}</span></p>
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+                <button
+                  onClick={() => {
+                    const url = `${window.location.origin}/?room=${room.code}`;
+                    const done = () => { setCopied(true); setTimeout(() => setCopied(false), 2000); };
+                    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(url).then(done).catch(() => window.prompt('Скопируйте ссылку:', url));
+                    else window.prompt('Скопируйте ссылку:', url);
+                  }}
+                  className="px-2.5 py-1 notch-sm border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-[11px] font-mono cursor-pointer"
+                >
+                  {copied ? '✓ Скопировано' : '🔗 Скопировать ссылку'}
+                </button>
+                <a
+                  href={`https://t.me/share/url?url=${encodeURIComponent(`${window.location.origin}/?room=${room.code}`)}&text=${encodeURIComponent('Заходи в «Бункер» — нас ждут!')}`}
+                  target="_blank" rel="noreferrer"
+                  className="px-2.5 py-1 notch-sm border border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 text-[11px] font-mono"
+                >
+                  ✈ Telegram
+                </a>
+              </div>
             </div>
           </div>
           <div className="flex items-start gap-4">

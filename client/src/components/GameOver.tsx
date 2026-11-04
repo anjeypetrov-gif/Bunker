@@ -17,18 +17,55 @@ export const GameOver: React.FC<GameOverProps> = ({
   const survivors = Object.values(room.players).filter(p => !p.isExiled);
   const exiled = Object.values(room.players).filter(p => p.isExiled);
 
-  // Evaluate survival chance based on professions
-  const professionsList = survivors.map(p => p.cards.profession?.title || '');
-  const hasDoctor = professionsList.some(p => p.includes('Врач') || p.includes('хирург') || p.includes('доктор'));
-  const hasEngineer = professionsList.some(p => p.includes('Инженер') || p.includes('Сантехник') || p.includes('Механик') || p.includes('Строитель'));
-  const hasAgronomist = professionsList.some(p => p.includes('Агроном') || p.includes('Биолог') || p.includes('Повар'));
+  // Оценка бункера по составу выживших (по названиям их карт)
+  const titles = (get: (p: typeof survivors[number]) => string | undefined) =>
+    survivors.map(p => (get(p) || '').toLowerCase());
+  const profs = titles(p => p.cards.profession?.title);
+  const healths = titles(p => p.cards.health?.title);
+  const extras = survivors.map(p =>
+    [p.cards.hobby?.title, p.cards.baggage?.title, p.cards.trait?.title, p.cards.condition?.title].join(' ').toLowerCase());
+  const has = (list: string[], words: string[]) => list.some(t => words.some(w => t.includes(w)));
 
-  let survivalChance = 50;
-  if (hasDoctor) survivalChance += 20;
-  if (hasEngineer) survivalChance += 15;
-  if (hasAgronomist) survivalChance += 15;
-  if (survivors.length < room.bunkerCapacity) survivalChance -= 20;
-  survivalChance = Math.min(99, Math.max(10, survivalChance));
+  const hasDoctor = has(profs, ['врач', 'хирург', 'медсестр', 'стоматолог']) || has(extras, ['первая помощь', 'аптечк']);
+  const hasEngineer = has(profs, ['инженер', 'сантехник', 'механик', 'строител', 'электрик', 'радиоинженер', 'геолог']);
+  const hasAgronomist = has(profs, ['агроном', 'биолог', 'повар', 'пекарь', 'биотехнолог']) || has(extras, ['сад', 'семян']);
+  const hasLeader = has(profs, ['психотерапевт', 'юрист', 'учитель', 'офицер']) || has(extras, ['лидер', 'дипломат', 'переговорщик']);
+  const badHealth = healths.filter(t =>
+    ['диабет', 'астма', 'гастрит', 'глухот', 'миопия', 'перелом', 'мигрен', 'гипертон', 'протез', 'слабое сердце', 'дальтонизм'].some(w => t.includes(w))).length;
+
+  let survivalChance = 40;
+  if (hasDoctor) survivalChance += 18;
+  if (hasEngineer) survivalChance += 14;
+  if (hasAgronomist) survivalChance += 14;
+  if (hasLeader) survivalChance += 8;
+  survivalChance -= Math.min(24, badHealth * 6);
+  if (survivors.length < room.bunkerCapacity) survivalChance -= 10;
+  survivalChance = Math.min(97, Math.max(8, survivalChance));
+
+  const missing: string[] = [];
+  if (!hasDoctor) missing.push('врача');
+  if (!hasEngineer) missing.push('инженера');
+  if (!hasAgronomist) missing.push('человека, который накормит группу');
+  const years = room.catastrophe?.durationYears || 10;
+  const verdict = survivalChance >= 80 ? 'Сильная команда' : survivalChance >= 55 ? 'Держатся на упрямстве' : survivalChance >= 35 ? 'Шаткое убежище' : 'Бункер доживает последние месяцы';
+  const epilogue =
+    survivalChance >= 80
+      ? `Бункер встретил «${room.catastrophe?.title || 'катастрофу'}» с запасом: у группы есть и руки, и голова. Через ${years} лет двери откроются, и выжившие выйдут уже не группой незнакомцев, а основателями нового мира.`
+      : survivalChance >= 55
+      ? `Группа держится: первые годы были трудными, но общими усилиями им удалось не потерять голову. Не хватало ${missing.length ? missing.join(', ') : 'удачи'}, и именно это стало причиной самых громких ссор.`
+      : survivalChance >= 35
+      ? `Без ${missing.length ? missing.join(' и ') : 'надёжного плана'} зима выдалась тяжёлой. Запасы таяли, болезни не отпускали, но вера в общее дело всё же не давала сдаться. Дальше всё решит одна-две удачные зимы.`
+      : `Бункер заперт, но внутри не хватало слишком многого${missing.length ? `: ${missing.join(', ')}` : ''}. Хроника прервалась на третьей зиме. Возможно, голосование было слишком поспешным.`;
+
+  const shareText = `БУНКЕР — итог партии\n${verdict}: шанс на возрождение ${survivalChance}%\nВыжили: ${survivors.map(p => p.name).join(', ')}\nИзгнаны: ${exiled.map(p => p.name).join(', ') || 'никто'}\nИграть: ${window.location.origin}`;
+  const [shared, setShared] = React.useState(false);
+  const share = async () => {
+    try {
+      if (navigator.share) { await navigator.share({ text: shareText }); return; }
+      await navigator.clipboard.writeText(shareText);
+      setShared(true); setTimeout(() => setShared(false), 2000);
+    } catch { window.prompt('Скопируйте результат:', shareText); }
+  };
 
   return (
     <div className="max-w-4xl mx-auto my-8 p-6 bg-slate-900 border border-slate-800 notch shadow-2xl space-y-6">
@@ -52,10 +89,13 @@ export const GameOver: React.FC<GameOverProps> = ({
         <div className="text-5xl font-black font-mono text-amber-400">
           {survivalChance}%
         </div>
+        <div className="text-sm font-bold text-slate-100 uppercase tracking-wider">{verdict}</div>
+        <p className="text-sm text-slate-300 font-sans leading-relaxed max-w-xl mx-auto">{epilogue}</p>
         <div className="flex justify-center gap-4 text-xs font-mono text-slate-400 pt-2">
           <span>Врачебный уход: <strong className={hasDoctor ? 'text-emerald-400' : 'text-red-400'}>{hasDoctor ? 'ЕСТЬ' : 'НЕТ'}</strong></span>
           <span>Инженерный блок: <strong className={hasEngineer ? 'text-emerald-400' : 'text-red-400'}>{hasEngineer ? 'ЕСТЬ' : 'НЕТ'}</strong></span>
           <span>Продовольствие: <strong className={hasAgronomist ? 'text-emerald-400' : 'text-red-400'}>{hasAgronomist ? 'ЕСТЬ' : 'НЕТ'}</strong></span>
+          <span>Лидер: <strong className={hasLeader ? 'text-emerald-400' : 'text-red-400'}>{hasLeader ? 'ЕСТЬ' : 'НЕТ'}</strong></span>
         </div>
       </div>
 
@@ -100,8 +140,17 @@ export const GameOver: React.FC<GameOverProps> = ({
         </div>
       </div>
 
+      <div className="pt-4 border-t border-slate-800 text-center">
+        <button
+          onClick={share}
+          className="py-3 px-6 border border-slate-600 bg-slate-900 hover:bg-slate-800 text-slate-200 font-bold notch inline-flex items-center gap-2 uppercase tracking-wider text-xs transition-all cursor-pointer"
+        >
+          {shared ? '✓ Скопировано' : '📤 Поделиться результатом'}
+        </button>
+      </div>
+
       {isHost && (
-        <div className="pt-4 border-t border-slate-800 text-center">
+        <div className="pt-4 text-center">
           <button
             onClick={onRestart}
             className="py-4 px-8 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold notch shadow-lg shadow-amber-500/30 inline-flex items-center gap-3 uppercase tracking-wider text-sm transition-all cursor-pointer"

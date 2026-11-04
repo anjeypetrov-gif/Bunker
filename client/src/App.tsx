@@ -9,6 +9,8 @@ import { ChatPanel } from './components/ChatPanel';
 import { VotingModal } from './components/VotingModal';
 import { GameOver } from './components/GameOver';
 import { BottomControlBar } from './components/BottomControlBar';
+import { FilmEffect } from './components/FilmEffect';
+import { EventBanner } from './components/EventBanner';
 import { SpeechBanner } from './components/SpeechBanner';
 import { HintBar, HelpSheet } from './components/Hints';
 import { useSpeechClock } from './hooks/useSpeechClock';
@@ -217,6 +219,7 @@ export const App: React.FC = () => {
             panel photo, and lets the image stay atmospheric rather than
             competing with the UI for attention. */}
         <div className="absolute inset-0 bg-slate-950/75" />
+        <FilmEffect />
         <div className="relative z-10">
           <Lobby
             onCreateRoom={handleCreateRoom}
@@ -250,6 +253,7 @@ export const App: React.FC = () => {
         <ShelterInfo room={room} currentSocketId={currentSocketId} onAdvancePhase={handleAdvancePhase} />
       </div>
 
+      <EventBanner room={room} />
       <SpeechBanner room={room} currentSocketId={currentSocketId} secondsLeft={speechSeconds} onEndSpeech={handleEndSpeech} />
       <HintBar room={room} currentSocketId={currentSocketId} onOpenHelp={() => setHelpOpen(true)} />
       {helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />}

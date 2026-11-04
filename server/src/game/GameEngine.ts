@@ -19,8 +19,7 @@ import {
   SECRET_FACTS,
   CONDITIONS,
   ACTION_CARDS,
-  SPECIAL_ROLES
-} from '../data/decks';
+  SPECIAL_ROLES, ROUND_EVENTS } from '../data/decks';
 
 // Card types that represent revealable personal information.
 // The action card is handled separately through useActionCard() and does
@@ -227,6 +226,7 @@ export class GameEngine {
       revealedCountInRound: 0,
       speakerId: null,
       speakerQueue: [],
+      roundEvent: null,
       speechDuration: 60,
       speechRemainingMs: 0
     };
@@ -487,6 +487,8 @@ export class GameEngine {
 
     room.votes = {};
     room.lastExiledPlayerId = null;
+    room.roundEvent = null;
+    delete this.eventsUsed[room.code];
     room.phase = 'INTRO';
     room.currentRound = 1;
     room.activePlayerIndex = 0;
@@ -519,6 +521,20 @@ export class GameEngine {
     delete this.speechEnds[room.code];
     room.speakerId = null;
     room.speakerQueue = [];
+  }
+
+  private eventsUsed: Record<string, number[]> = {};
+
+  /** Выбирает событие нового раунда (без повторов, пока есть свежие). */
+  private rollRoundEvent(room: RoomState) {
+    const used = (this.eventsUsed[room.code] ||= []);
+    let pool = ROUND_EVENTS.map((_, i) => i).filter(i => !used.includes(i));
+    if (pool.length === 0) { used.length = 0; pool = ROUND_EVENTS.map((_, i) => i); }
+    const idx = pool[Math.floor(Math.random() * pool.length)];
+    used.push(idx);
+    const ev = ROUND_EVENTS[idx];
+    room.roundEvent = { title: ev.title, desc: ev.desc, needs: ev.needs };
+    this.addSystemMessage(room, `⚠ Событие раунда: «${ev.title}». ${ev.desc} Могут пригодиться: ${ev.needs}.`);
   }
 
   private startSpeeches(room: RoomState) {
@@ -614,6 +630,7 @@ export class GameEngine {
         room.phase = 'CARD_REVEAL';
         this.resetRoundFlags(room);
         this.addSystemMessage(room, `Первый раунд был вступительным — никто не изгнан. Раунд ${room.currentRound}. Откройте следующую характеристику своего персонажа.`);
+        this.rollRoundEvent(room);
       } else {
         room.phase = 'VOTING';
         room.votes = {};
@@ -634,6 +651,7 @@ export class GameEngine {
         room.phase = 'CARD_REVEAL';
         this.resetRoundFlags(room);
         this.addSystemMessage(room, `Раунд ${room.currentRound}. Откройте следующую характеристику своего персонажа.`);
+        this.rollRoundEvent(room);
       }
     }
 

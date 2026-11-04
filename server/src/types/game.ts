@@ -111,6 +111,7 @@ export interface RoomState {
   // Очередь выступлений в фазе обсуждения (управляется сервером).
   speakerId: string | null;
   speakerQueue: string[];
+  roundEvent: { title: string; desc: string; needs: string } | null;
   speechDuration: number;
   // Сколько мс осталось у говорящего на момент отправки (без зависимости от часов клиента).
   speechRemainingMs: number;
