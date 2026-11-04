@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Shield, Play, Users, LogIn, Bot, LogOut } from './icons';
 import { RoomState } from '../types/game';
 import { getBotAvatarArt } from '../data/botAvatars';
+import { HelpSheet } from './Hints';
 
 interface LobbyProps {
   onCreateRoom: (name: string, avatar: string) => void;
@@ -39,6 +40,7 @@ export const Lobby: React.FC<LobbyProps> = ({
   const [name, setName] = useState('');
   const [roomCodeInput, setRoomCodeInput] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('avatar-1');
+  const [helpOpen, setHelpOpen] = useState(false);
   const [joinMode, setJoinMode] = useState<'CHOICE' | 'CREATE' | 'JOIN'>('CHOICE');
 
   const isHost = room && room.hostId === currentSocketId;
@@ -46,7 +48,14 @@ export const Lobby: React.FC<LobbyProps> = ({
 
   if (room && room.phase === 'LOBBY') {
     return (
-      <div className="max-w-4xl mx-auto my-8 p-6 bg-slate-900/90 border border-slate-800 notch shadow-2xl backdrop-blur-md">
+      <div className="max-w-4xl mx-auto my-8 p-6 bg-slate-900/90 border border-slate-800 notch shadow-2xl backdrop-blur-md relative">
+        <button
+          onClick={() => setHelpOpen(true)}
+          className="absolute top-2 right-2 z-10 md:hidden px-3 py-1.5 notch-sm border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-mono font-bold cursor-pointer transition-colors"
+        >
+          📖 ПРАВИЛА ИГРЫ
+        </button>
+        {helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />}
         <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-6">
           <div className="flex items-center gap-3">
             <Shield className="w-8 h-8 text-amber-400" />
@@ -56,6 +65,12 @@ export const Lobby: React.FC<LobbyProps> = ({
             </div>
           </div>
           <div className="flex items-start gap-4">
+            <button
+              onClick={() => setHelpOpen(true)}
+              className="hidden md:block px-3 py-1.5 notch-sm border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-mono font-bold cursor-pointer transition-colors"
+            >
+              📖 ПРАВИЛА
+            </button>
             <div className="text-right">
               <span className="text-xs text-slate-400 block font-mono">ВМЕСТИМОСТЬ БУНКЕРА</span>
               <span className="text-lg font-bold text-emerald-400 font-mono">{room.bunkerCapacity} из {playersCount} МЕСТ</span>
@@ -205,7 +220,14 @@ export const Lobby: React.FC<LobbyProps> = ({
   }
 
   return (
-    <div className="max-w-md mx-auto my-12 p-6 bg-slate-900/90 border border-slate-800 notch shadow-2xl backdrop-blur-md">
+    <div className="max-w-md mx-auto my-12 p-6 bg-slate-900/90 border border-slate-800 notch shadow-2xl backdrop-blur-md relative">
+        <button
+          onClick={() => setHelpOpen(true)}
+          className="absolute top-2 right-2 z-10 px-3 py-1.5 notch-sm border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-mono font-bold cursor-pointer transition-colors"
+        >
+          📖 ПРАВИЛА ИГРЫ
+        </button>
+        {helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />}
       <div className="text-center mb-8">
         <div className="inline-flex items-center justify-center w-16 h-16 bg-amber-500/10 border border-amber-500/30 notch-sm mb-3 bunker-glow">
           <Shield className="w-8 h-8 text-amber-400" />
