@@ -1,26 +1,64 @@
 import { socket } from './socket';
 
+// Опциональный TURN (relay) — задаётся переменными окружения на этапе сборки:
+// VITE_TURN_URL (например turn:turn.example.com:3478), VITE_TURN_USER, VITE_TURN_PASS
+const env = ((import.meta as any).env || {}) as Record<string, string | undefined>;
+
+const ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' }
+];
+if (env.VITE_TURN_URL) {
+  ICE_SERVERS.push({
+    urls: env.VITE_TURN_URL.split(',').map(s => s.trim()),
+    username: env.VITE_TURN_USER,
+    credential: env.VITE_TURN_PASS
+  });
+}
+
+const isBotId = (id: string) => id.startsWith('bot-');
+
 export class WebRTCManager {
   private localStream: MediaStream | null = null;
+  private localStreamPromise: Promise<MediaStream | null> | null = null;
   private peerConnections: Record<string, RTCPeerConnection> = {};
+  private remoteStreams: Record<string, MediaStream> = {};
+  private pendingCandidates: Record<string, RTCIceCandidateInit[]> = {};
+  private creating: Record<string, Promise<void>> = {};
   private onRemoteStreamCallback: ((socketId: string, stream: MediaStream) => void) | null = null;
   private onPeerRemoveCallback: ((socketId: string) => void) | null = null;
 
-  public async getLocalStream(audio = true, video = true): Promise<MediaStream | null> {
-    try {
-      if (this.localStream) {
-        return this.localStream;
+  constructor() {
+    // Слушатели живут на уровне менеджера, а не React-компонента: сигналы
+    // (offer/answer/candidate) могут прийти раньше, чем смонтируется VideoGrid.
+    socket.on('receive_signal', ({ callerId, signalData }: { callerId: string; signalData: any }) => {
+      this.handleIncomingSignal(callerId, signalData).catch(e => console.error('[WebRTC] signal error', e));
+    });
+    socket.on('signal_returned', ({ id, signalData }: { id: string; signalData: any }) => {
+      this.handleIncomingSignal(id, signalData).catch(e => console.error('[WebRTC] signal error', e));
+    });
+    socket.on('user_left_webrtc', ({ socketId }: { socketId: string }) => {
+      this.removePeer(socketId);
+    });
+  }
+
+  public getLocalStream(audio = true, video = true): Promise<MediaStream | null> {
+    if (this.localStream) return Promise.resolve(this.localStream);
+    if (this.localStreamPromise) return this.localStreamPromise;
+
+    this.localStreamPromise = (async () => {
+      try {
+        this.localStream = await navigator.mediaDevices.getUserMedia({
+          audio,
+          video: video ? { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } } : false
+        });
+      } catch (err) {
+        console.warn('[WebRTC] Could not access real camera/mic, fallback stream will be generated.', err);
+        this.localStream = this.createDummyStream();
       }
-      this.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: audio,
-        video: video ? { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } } : false
-      });
       return this.localStream;
-    } catch (err) {
-      console.warn('[WebRTC] Could not access real camera/mic, fallback stream will be generated.', err);
-      this.localStream = this.createDummyStream();
-      return this.localStream;
-    }
+    })();
+    return this.localStreamPromise;
   }
 
   private createDummyStream(): MediaStream {
@@ -35,8 +73,7 @@ export class WebRTCManager {
       ctx.font = '16px monospace';
       ctx.fillText('СИГНАЛ БУНКЕРА', 80, 125);
     }
-    const stream = canvas.captureStream(10);
-    return stream;
+    return canvas.captureStream(10);
   }
 
   public setCallbacks(
@@ -45,116 +82,139 @@ export class WebRTCManager {
   ) {
     this.onRemoteStreamCallback = onRemoteStream;
     this.onPeerRemoveCallback = onPeerRemove;
+    // Потоки, пришедшие до монтирования VideoGrid, отдаём сразу.
+    Object.entries(this.remoteStreams).forEach(([id, s]) => onRemoteStream(id, s));
   }
 
-  public async createPeer(targetSocketId: string, isInitiator: boolean) {
-    if (this.peerConnections[targetSocketId]) return;
-
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
+  /**
+   * Приводит набор соединений в соответствие со списком игроков комнаты.
+   * Чтобы не было "двойных" offer (glare), инициатор — тот, у кого socket.id меньше.
+   */
+  public syncPeers(selfId: string, players: { id: string; isConnected?: boolean }[]) {
+    const wanted = new Set<string>();
+    players.forEach(p => {
+      if (p.id === selfId || isBotId(p.id) || p.isConnected === false) return;
+      wanted.add(p.id);
+      if (!this.peerConnections[p.id] && !this.creating[p.id] && selfId < p.id) {
+        this.createPeer(p.id, true).catch(e => console.error('[WebRTC] createPeer error', e));
+      }
     });
+    Object.keys(this.peerConnections).forEach(id => {
+      if (!wanted.has(id)) this.removePeer(id);
+    });
+  }
 
-    this.peerConnections[targetSocketId] = pc;
+  public createPeer(targetSocketId: string, isInitiator: boolean): Promise<void> {
+    if (this.peerConnections[targetSocketId]) return Promise.resolve();
+    if (this.creating[targetSocketId]) return this.creating[targetSocketId];
 
-    if (this.localStream) {
-      this.localStream.getTracks().forEach(track => {
-        pc.addTrack(track, this.localStream!);
-      });
-    }
+    const task = (async () => {
+      // Ждём локальный поток ДО создания соединения, чтобы треки попали в offer/answer.
+      await this.getLocalStream();
+      if (this.peerConnections[targetSocketId]) return;
 
-    pc.ontrack = (event) => {
-      if (event.streams && event.streams[0] && this.onRemoteStreamCallback) {
-        this.onRemoteStreamCallback(targetSocketId, event.streams[0]);
-      }
-    };
+      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      this.peerConnections[targetSocketId] = pc;
 
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        if (isInitiator) {
-          socket.emit('send_signal', {
-            targetId: targetSocketId,
-            signalData: { type: 'candidate', candidate: event.candidate }
-          });
-        } else {
-          socket.emit('return_signal', {
-            callerId: targetSocketId,
-            signalData: { type: 'candidate', candidate: event.candidate }
-          });
+      this.localStream?.getTracks().forEach(track => pc.addTrack(track, this.localStream!));
+
+      pc.ontrack = (event) => {
+        const stream = event.streams[0] || new MediaStream([event.track]);
+        this.remoteStreams[targetSocketId] = stream;
+        this.onRemoteStreamCallback?.(targetSocketId, stream);
+      };
+
+      pc.onicecandidate = (event) => {
+        if (!event.candidate) return;
+        const signalData = { type: 'candidate', candidate: event.candidate };
+        if (isInitiator) socket.emit('send_signal', { targetId: targetSocketId, signalData });
+        else socket.emit('return_signal', { callerId: targetSocketId, signalData });
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        console.log(`[WebRTC] ${targetSocketId} ice=${pc.iceConnectionState} conn=${pc.connectionState}`);
+        if (pc.iceConnectionState === 'failed') {
+          // Прямой путь не нашёлся (нужен TURN) — пробуем перезапустить ICE.
+          try { pc.restartIce(); } catch { /* noop */ }
         }
-      }
-    };
+      };
 
-    if (isInitiator) {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socket.emit('send_signal', {
-        targetId: targetSocketId,
-        signalData: { type: 'offer', sdp: offer }
-      });
+      if (isInitiator) {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit('send_signal', { targetId: targetSocketId, signalData: { type: 'offer', sdp: offer } });
+      }
+    })();
+
+    this.creating[targetSocketId] = task;
+    task.finally(() => { delete this.creating[targetSocketId]; });
+    return task;
+  }
+
+  private async flushCandidates(id: string, pc: RTCPeerConnection) {
+    const queue = this.pendingCandidates[id] || [];
+    delete this.pendingCandidates[id];
+    for (const c of queue) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) { console.error('[WebRTC] Candidate error', e); }
     }
   }
 
   public async handleIncomingSignal(callerId: string, signalData: any) {
-    let pc = this.peerConnections[callerId];
-
     if (signalData.type === 'offer') {
-      if (!pc) {
-        await this.createPeer(callerId, false);
-        pc = this.peerConnections[callerId];
-      }
+      // Новый offer от пира, у которого уже есть соединение (например, после рестарта) — пересоздаём.
+      if (this.peerConnections[callerId]) this.removePeer(callerId, true);
+      await this.createPeer(callerId, false);
+      const pc = this.peerConnections[callerId];
+      if (!pc) return;
       await pc.setRemoteDescription(new RTCSessionDescription(signalData.sdp));
+      await this.flushCandidates(callerId, pc);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-      socket.emit('return_signal', {
-        callerId,
-        signalData: { type: 'answer', sdp: answer }
-      });
-    } else if (signalData.type === 'answer' && pc) {
+      socket.emit('return_signal', { callerId, signalData: { type: 'answer', sdp: answer } });
+      return;
+    }
+
+    if (this.creating[callerId]) await this.creating[callerId].catch(() => {});
+    const pc = this.peerConnections[callerId];
+
+    if (signalData.type === 'answer' && pc) {
       await pc.setRemoteDescription(new RTCSessionDescription(signalData.sdp));
-    } else if (signalData.type === 'candidate' && pc) {
-      try {
-        await pc.addIceCandidate(new RTCIceCandidate(signalData.candidate));
-      } catch (e) {
-        console.error('[WebRTC] Candidate error', e);
+      await this.flushCandidates(callerId, pc);
+    } else if (signalData.type === 'candidate') {
+      if (pc && pc.remoteDescription) {
+        try { await pc.addIceCandidate(new RTCIceCandidate(signalData.candidate)); } catch (e) { console.error('[WebRTC] Candidate error', e); }
+      } else {
+        (this.pendingCandidates[callerId] ||= []).push(signalData.candidate);
       }
     }
   }
 
-  public removePeer(socketId: string) {
+  public removePeer(socketId: string, silent = false) {
     if (this.peerConnections[socketId]) {
       this.peerConnections[socketId].close();
       delete this.peerConnections[socketId];
     }
-    if (this.onPeerRemoveCallback) {
-      this.onPeerRemoveCallback(socketId);
+    delete this.pendingCandidates[socketId];
+    if (!silent) {
+      delete this.remoteStreams[socketId];
+      this.onPeerRemoveCallback?.(socketId);
     }
   }
 
   public toggleAudio(enabled: boolean) {
-    if (this.localStream) {
-      this.localStream.getAudioTracks().forEach(track => {
-        track.enabled = enabled;
-      });
-    }
+    this.localStream?.getAudioTracks().forEach(t => { t.enabled = enabled; });
   }
 
   public toggleVideo(enabled: boolean) {
-    if (this.localStream) {
-      this.localStream.getVideoTracks().forEach(track => {
-        track.enabled = enabled;
-      });
-    }
+    this.localStream?.getVideoTracks().forEach(t => { t.enabled = enabled; });
   }
 
   public destroy() {
     Object.keys(this.peerConnections).forEach(id => this.removePeer(id));
-    if (this.localStream) {
-      this.localStream.getTracks().forEach(t => t.stop());
-      this.localStream = null;
-    }
+    this.remoteStreams = {};
+    this.localStream?.getTracks().forEach(t => t.stop());
+    this.localStream = null;
+    this.localStreamPromise = null;
   }
 }
 
