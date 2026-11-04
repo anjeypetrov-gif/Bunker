@@ -198,6 +198,26 @@ const SIMILAR: Partial<Record<CardType, Record<string, string>>> = {
     'Видел начало катастрофы': 'secret-znaet-inzhenernyy-plan-bunkera.png',
     'Умеет лечить травами': 'secret-taynyy-immunitet.png',
   },
+  condition: {
+    'Крепкая генетика': 'health-vysokiy-immunitet-k-infektsiyam.png',
+    'Опытный переговорщик': 'trait-liderskie-kachestva.png',
+    'План на случай паники': 'secret-znaet-inzhenernyy-plan-bunkera.png',
+    'Разбирается в запасах': 'baggage-armeyskiy-sukhoy-paek-na-1-mesyats.png',
+    'Устойчив к недосыпу': 'trait-trudogolik.png',
+    'Чувствует ложь': 'trait-paranoik.png',
+    'Бережливый': 'baggage-kanistra-ochishchennoy-vody-20-l.png',
+    'Есть контакт снаружи': 'hobby-radiolyubitelstvo.png',
+    'Быстро восстанавливается': 'hobby-pervaya-pomoshch-i-dezhurstvo.png',
+    'Пользуется доверием': 'trait-optimist.png',
+    'Лёгкая рука': 'profession-vrach-khirurg.png',
+    'Не боится темноты': 'trait-khladnokrovnyy-analitik.png',
+    'Хранит семейный амулет': 'secret-taynyy-immunitet.png',
+    'Поёт по ночам': 'baggage-elektroakusticheskaya-gitara.png',
+    'Хороший рассказчик': 'hobby-igra-na-gitare-i-penie.png',
+    'Знает чужие секреты': 'secret-falshivyy-diplom.png',
+    'Никогда не болел': 'health-idealno-zdorov.png',
+    'Хорошо считает в уме': 'hobby-shakhmaty-i-strategiya.png',
+  },
 };
 
 /** Returns the /cards/... URL for a card's art, or null if none is mapped. */
