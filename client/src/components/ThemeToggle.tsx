@@ -4,7 +4,7 @@ type Theme = 'dark' | 'light';
 
 function readTheme(): Theme {
   try {
-    const t = localStorage.getItem('bunker-theme');
+    const t = sessionStorage.getItem('bunker-theme');
     if (t === 'light' || t === 'dark') return t;
   } catch { /* storage unavailable */ }
   return 'dark';
@@ -28,7 +28,7 @@ export const ThemeToggle: React.FC = () => {
 
   useEffect(() => {
     applyTheme(theme);
-    try { localStorage.setItem('bunker-theme', theme); } catch { /* ignore */ }
+    try { sessionStorage.setItem('bunker-theme', theme); } catch { /* ignore */ }
   }, [theme]);
 
   useEffect(() => {
