@@ -220,6 +220,112 @@ const SIMILAR: Partial<Record<CardType, Record<string, string>>> = {
   },
 };
 
+
+// Новые карты: используем иллюстрации близких по смыслу карт, пока нет собственных.
+const EXTRA: Partial<Record<CardType, Record<string, string>>> = {
+  profession: {
+    'Врач скорой помощи': 'profession-vrach-khirurg.png',
+    'Врач-инфекционист': 'profession-vrach-khirurg.png',
+    'Миколог': 'profession-agronom-bioekolog.png',
+    'Биохимик': 'profession-khimik-laborant.png',
+    'Ботаник': 'profession-agronom-bioekolog.png',
+    'Астроном': 'profession-fizik-yadershchik.png',
+    'Криминалист': 'profession-ofitser-takticheskoy-razvedki.png',
+    'Хакер': 'profession-programmist-robototekhnik.png',
+    'Частный детектив': 'profession-ofitser-takticheskoy-razvedki.png',
+    'Антиквар': 'profession-uchitel-nachalnykh-klassov.png',
+  },
+  health: {
+    'Эпилепсия': 'health-legkaya-astma.png',
+    'Непереносимость глютена': 'health-khronicheskiy-gastrit.png',
+    'Гипотиреоз': 'health-sakharnyy-diabet-1-tip.png',
+    'Артрит': 'health-perelom-ruki-v-gipse.png',
+    'Остеопороз': 'health-perelom-ruki-v-gipse.png',
+    'Хроническая усталость': 'health-legkaya-astma.png',
+  },
+  hobby: {
+    'Парапланеризм': 'hobby-rukopashnyy-boy-sambo.png',
+    'Астрономия': 'hobby-shakhmaty-i-strategiya.png',
+    'Походы': 'hobby-okhota-i-rybalka.png',
+    'Коллекционирование марок и монет': 'hobby-shakhmaty-i-strategiya.png',
+    'Создание подкастов': 'hobby-igra-na-gitare-i-penie.png',
+    'Волонтёрство': 'hobby-pervaya-pomoshch-i-dezhurstvo.png',
+    'Ремесло (дерево и керамика)': 'hobby-stolyarnoe-delo.png',
+    'Изучение истории': 'hobby-shakhmaty-i-strategiya.png',
+  },
+  trait: {
+    'Практичный': 'trait-pedant.png',
+    'Хитрец': 'trait-paranoik.png',
+    'Замкнутый': 'trait-skromnyy-i-molchalivyy.png',
+    'Импульсивный': 'trait-paranoik.png',
+    'Мечтатель': 'trait-optimist.png',
+  },
+  baggage: {
+    'Лопата': 'baggage-skladnaya-yashchik-instrumentov-mekhanika.png',
+    'Портативный фильтр для воды': 'baggage-nabor-filtrov-dlya-ochistki-vody.png',
+    'Набор для первой помощи': 'baggage-nabor-khirurgicheskikh-instrumentov.png',
+    'Пакет с семенами': 'baggage-nabor-semyan-ovoshchey-i-zlakov.png',
+    'Компас и карта местности': 'baggage-schetchik-geygera-dozimetr.png',
+    'Портативный зарядник': 'baggage-solnechnaya-panel-100w-pauerbank.png',
+    'Коза': 'baggage-armeyskiy-sukhoy-paek-na-1-mesyats.png',
+    'Котята': 'baggage-elektroakusticheskaya-gitara.png',
+  },
+  condition: {
+    'Забери багаж': 'baggage-skladnaya-yashchik-instrumentov-mekhanika.png',
+    'Вода в бункере': 'baggage-kanistra-ochishchennoy-vody-20-l.png',
+    'Антибиотики': 'baggage-nabor-khirurgicheskikh-instrumentov.png',
+    'Обмен карт': 'action-obmen-professiey.png',
+    'Дополнительный багаж': 'baggage-armeyskiy-sukhoy-paek-na-1-mesyats.png',
+    'Отмена голосования': 'action-vtoroy-shans.png',
+    'Копия действия': 'action-udvoenie-golosa.png',
+    'Чистый бункер': 'baggage-nabor-filtrov-dlya-ochistki-vody.png',
+  },
+  phobia: {
+    'Клаустрофобия': 'trait-klaustrofobiya.png',
+    'Агорафобия': 'trait-klaustrofobiya.png',
+    'Акрофобия': 'trait-klaustrofobiya.png',
+    'Арахнофобия': 'trait-paranoik.png',
+    'Офидиофобия': 'trait-paranoik.png',
+    'Кинофобия': 'trait-paranoik.png',
+    'Гемофобия': 'health-perelom-ruki-v-gipse.png',
+    'Мизофобия': 'trait-pedant.png',
+    'Нозофобия': 'health-khronicheskiy-gastrit.png',
+    'Токсикофобия': 'trait-paranoik.png',
+    'Социофобия': 'trait-skromnyy-i-molchalivyy.png',
+    'Астрафобия': 'trait-klaustrofobiya.png',
+    'Сомнифобия': 'health-khronicheskiy-gastrit.png',
+    'Хирургическая фобия': 'action-proverka-zdorovya.png',
+    'Эметофобия': 'health-khronicheskiy-gastrit.png',
+    'Трипофобия': 'trait-klaustrofobiya.png',
+    'Нумерофобия': 'trait-pedant.png',
+    'Фобия темноты': 'trait-klaustrofobiya.png',
+    'Фобия глубины': 'trait-klaustrofobiya.png',
+    'Тетрафобия': 'trait-pedant.png',
+  },
+  knowledge: {
+    'Очистка воды': 'baggage-nabor-filtrov-dlya-ochistki-vody.png',
+    'Огонь без спичек': 'hobby-okhota-i-rybalka.png',
+    'Съедобные растения': 'hobby-sadovodstvo-i-gidroponika.png',
+    'Ориентирование': 'profession-ofitser-takticheskoy-razvedki.png',
+    'Укрытие из подручного': 'profession-stroitel-kamenshchik.png',
+    'Ловушки и рыбалка': 'hobby-okhota-i-rybalka.png',
+    'Запасы на зиму': 'baggage-armeyskiy-sukhoy-paek-na-1-mesyats.png',
+    'Народная медицина': 'hobby-pervaya-pomoshch-i-dezhurstvo.png',
+    'Обработка ран': 'baggage-nabor-khirurgicheskikh-instrumentov.png',
+    'Метеорология': 'hobby-radiolyubitelstvo.png',
+    'Следопыт': 'hobby-okhota-i-rybalka.png',
+    'Сигналы бедствия': 'hobby-radiolyubitelstvo.png',
+    'Переговоры': 'trait-liderskie-kachestva.png',
+    'Работа в команде': 'trait-liderskie-kachestva.png',
+    'Управление стрессом': 'profession-psikhoterapevt.png',
+    'Самодельные инструменты': 'baggage-skladnaya-yashchik-instrumentov-mekhanika.png',
+    'Солнечная энергия': 'baggage-solnechnaya-panel-100w-pauerbank.png',
+    'Зимнее выживание': 'baggage-armeyskiy-sukhoy-paek-na-1-mesyats.png',
+    'Борьба с насекомыми': 'profession-veterinar-zoolog.png',
+    'Поиск воды в пустыне': 'baggage-kanistra-ochishchennoy-vody-20-l.png',
+  },
+};
+
 /** Returns the /cards/... URL for a card's art, or null if none is mapped. */
 export function getCardArt(type: CardType, title: string): string | null {
   if (type === 'biology') {
@@ -236,6 +342,6 @@ export function getCardArt(type: CardType, title: string): string | null {
     return best ? BASE + best.file : null;
   }
   const table = BY_TYPE[type];
-  const file = (table ? table[title] : undefined) ?? SIMILAR[type]?.[title];
+  const file = (table ? table[title] : undefined) ?? SIMILAR[type]?.[title] ?? EXTRA[type]?.[title];
   return file ? BASE + file : null;
 }
