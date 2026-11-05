@@ -414,6 +414,7 @@ export class GameEngine {
     this.stopSpeeches(room);
     room.lineage = undefined;
     room.roleResults = undefined;
+    room.story = undefined;
     room.survivalChance = undefined;
     room.gameFailed = undefined;
 

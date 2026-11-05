@@ -163,6 +163,18 @@ export const GameOver: React.FC<GameOverProps> = ({
         </div>
       </div>
 
+      {room.story && (
+        <div className="bg-slate-950 p-5 notch border border-amber-500/30 space-y-3">
+          <div className="flex items-center justify-between font-mono text-xs">
+            <span className="text-amber-400 uppercase tracking-widest">ИСТОРИЯ БУНКЕРА</span>
+            <span className="text-slate-500">
+              {room.story.pending ? 'ИИ дописывает историю…' : room.story.source === 'ai' ? 'написано ИИ по вашим карточкам' : 'по карточкам игроков'}
+            </span>
+          </div>
+          <div className="text-sm text-slate-200 leading-relaxed whitespace-pre-line">{room.story.text}</div>
+        </div>
+      )}
+
       <div className="text-center">
         <button
           onClick={() => setRevealAll(v => !v)}

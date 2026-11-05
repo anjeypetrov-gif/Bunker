@@ -1,3 +1,4 @@
+import { templateStory, aiStory } from './game/story';
 import { emitRoom, originAllowed } from './security';
 import express from 'express';
 import http from 'http';
@@ -68,6 +69,19 @@ gameEngine.onGameOver = (room) => {
   stats.gameFinished();
   const t0 = gameStartedAt.get(room.code);
   gameStartedAt.delete(room.code);
+  // История бункера: сначала мгновенный шаблон, затем (если есть ключ) текст от модели.
+  try {
+    room.story = { text: templateStory(room), source: 'template', pending: !!process.env.ANTHROPIC_API_KEY };
+    if (process.env.ANTHROPIC_API_KEY) {
+      const code = room.code;
+      aiStory(room).then(text => {
+        const r = gameEngine.getRoom(code);
+        if (!r || r.phase !== 'GAME_OVER' || !r.story) return;
+        r.story = text ? { text, source: 'ai' } : { ...r.story, pending: false };
+        emitRoom(io, r);
+      }).catch(() => {});
+    }
+  } catch (e) { console.warn('[Story]', e); }
   track({ k: 'over', sv: room.survivalChance, fail: !!room.gameFailed, r: room.currentRound, d: t0 ? Math.round((Date.now() - t0) / 1000) : undefined });
 };
 registerSocketHandlers(io, gameEngine);

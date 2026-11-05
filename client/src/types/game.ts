@@ -124,6 +124,7 @@ export interface RoomState {
   // true — никто не видит, кто за кого проголосовал
   survivalChance?: number;
   roleResults?: RoleResult[];
+  story?: { text: string; source: 'ai' | 'template'; pending?: boolean };
   gameFailed?: boolean;   // шанс выживания < 40% — партия провалена
   lineageEnabled: boolean; // после финала — игра «Продолжить род» для прошедших в бункер
   lineage?: LineageState;
