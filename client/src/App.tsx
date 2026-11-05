@@ -286,7 +286,7 @@ export const App: React.FC = () => {
 
   // Unified Single Screen Layout (Единый экран игры)
   return (
-    <div className="h-[100dvh] w-screen bg-page text-slate-100 flex flex-col overflow-hidden select-none">
+    <div className="h-[100dvh] w-screen bg-page text-slate-100 flex flex-col overflow-hidden select-none pt-9 md:pt-0">
       {/* Top Header: Compact Shelter Status Banner */}
       <div className="shrink-0 p-2.5 pb-0">
         <ShelterInfo room={room} currentSocketId={currentSocketId} onAdvancePhase={handleAdvancePhase} />

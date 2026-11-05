@@ -40,7 +40,6 @@ export const ThemeToggle: React.FC = () => {
     return () => document.removeEventListener('pointerdown', close);
   }, [open]);
 
-  const current = OPTIONS.find(o => o.id === theme)!;
   return (
     <div ref={ref} className="fixed z-[120] top-1.5 right-1.5 md:top-2 md:right-3 text-xs">
       <button
@@ -51,7 +50,7 @@ export const ThemeToggle: React.FC = () => {
         aria-label="Тема оформления"
         className="h-7 px-2 flex items-center gap-1 rounded-full border border-slate-600 bg-slate-900/90 text-slate-200 hover:border-amber-500 hover:text-amber-400 shadow backdrop-blur cursor-pointer font-mono"
       >
-        <span className="text-sm leading-none">{current.icon}</span>
+        <span className="text-[11px] leading-none font-bold uppercase tracking-wide">Тема</span>
         <span className="text-[10px] leading-none opacity-70">▾</span>
       </button>
       {open && (
