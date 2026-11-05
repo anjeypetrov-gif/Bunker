@@ -59,7 +59,7 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
       <div className="bg-slate-900/95 border border-slate-800 notch p-5 shadow-2xl space-y-4 max-w-4xl w-full max-h-[90vh] overflow-y-auto relative">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 cursor-pointer"
+          className="absolute top-4 right-4 text-slate-400 hover:text-slate-100 p-1 cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>

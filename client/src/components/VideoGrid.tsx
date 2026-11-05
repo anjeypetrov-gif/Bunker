@@ -188,7 +188,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
           >
             <button
               onClick={() => setInspected(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-100 p-1 cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -287,7 +287,7 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
       {onKick && (
         <button
           onClick={() => { if (window.confirm(`Исключить ${player.name} из комнаты?`)) onKick(); }}
-          className="absolute top-8 right-1.5 z-30 w-6 h-6 flex items-center justify-center bg-slate-950/80 hover:bg-red-600 text-slate-300 hover:text-white text-xs font-bold border border-slate-700 cursor-pointer"
+          className="absolute top-8 right-1.5 z-30 w-6 h-6 flex items-center justify-center bg-slate-950/80 hover:bg-red-600 text-slate-300 hover:text-slate-100 text-xs font-bold border border-slate-700 cursor-pointer"
           title="Исключить игрока"
         >
           ✕

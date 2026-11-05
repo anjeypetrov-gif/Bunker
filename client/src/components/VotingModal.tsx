@@ -66,7 +66,7 @@ export const VotingModal: React.FC<VotingModalProps> = ({
                     onClick={() => setSelectedTargetId(target.id)}
                     className={`p-3 notch-sm border flex items-center justify-between text-left transition-all cursor-pointer ${
                       isSelected
-                        ? 'bg-red-600/20 border-red-500 text-white shadow-md shadow-red-500/10'
+                        ? 'bg-red-600/20 border-red-500 text-slate-100 shadow-md shadow-red-500/10'
                         : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:bg-slate-800'
                     }`}
                   >

@@ -40,7 +40,7 @@ export const VoteReveal: React.FC<{ room: RoomState }> = ({ room }) => {
   if (!active) return null;
 
   return (
-    <div className="fixed inset-0 z-[90] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => verdict && setDismissed(key)}>
+    <div className="fixed inset-0 z-[90] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => verdict && setDismissed(key)}>
       <div className="w-full max-w-md space-y-4 font-mono" onClick={e => e.stopPropagation()}>
         <div className="text-center text-xs tracking-[0.3em] text-slate-400">ИТОГИ ГОЛОСОВАНИЯ{room.secretVoting !== false && <span className="block mt-1 text-[10px] tracking-widest text-slate-500">ТАЙНОЕ ГОЛОСОВАНИЕ</span>}</div>
         <div className="space-y-2">

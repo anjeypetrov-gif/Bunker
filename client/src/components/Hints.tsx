@@ -113,7 +113,7 @@ export const HelpSheet: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     ['Видео и звук', 'Кнопки микрофона и камеры — внизу. Если собеседника не видно, подождите несколько секунд: идёт соединение.'],
   ];
   return createPortal(
-    <div className="fixed inset-0 z-[100] bg-black/70 flex items-end md:items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] bg-slate-950/70 flex items-end md:items-center justify-center" onClick={onClose}>
       <div
         className="w-full md:max-w-md max-h-[85dvh] overflow-y-auto bg-slate-900 border border-amber-500/40 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-3 font-mono text-xs"
         onClick={e => e.stopPropagation()}

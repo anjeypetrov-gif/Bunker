@@ -195,7 +195,7 @@ export const GameOver: React.FC<GameOverProps> = ({
           <div className="space-y-2">
             {survivors.map(p => (
               <div key={p.id} className="p-3 bg-slate-900 notch-sm border border-slate-800 text-xs space-y-1">
-                <div className="font-bold text-white text-sm flex items-center justify-between">
+                <div className="font-bold text-slate-100 text-sm flex items-center justify-between">
                   <span>{p.name}</span>
                   <span className="text-[10px] text-emerald-400 font-mono">ВЫЖИЛ</span>
                 </div>

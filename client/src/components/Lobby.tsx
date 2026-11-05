@@ -135,7 +135,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                     key={p.id}
                     className={`flex items-center gap-3 p-3 notch-sm border ${
                       p.id === currentSocketId
-                        ? 'bg-amber-500/10 border-amber-500/40 text-white'
+                        ? 'bg-amber-500/10 border-amber-500/40 text-slate-100'
                         : 'bg-slate-800/60 border-slate-700/60 text-slate-200'
                     }`}
                   >
@@ -226,9 +226,9 @@ export const Lobby: React.FC<LobbyProps> = ({
               ) : (
                 <div className="text-xs text-slate-400 space-y-2 font-mono">
                   <p>Ожидание запуска игры организатором...</p>
-                  <p>Таймер выступающего: <span className="text-white font-bold">{room.turnDuration} сек</span></p>
-                  <p>Голосование: <span className="text-white font-bold">{room.secretVoting !== false ? 'тайное' : 'открытое'}</span></p>
-                  {room.lineageEnabled && <p>После финала: <span className="text-white font-bold">«Продолжить род»</span></p>}
+                  <p>Таймер выступающего: <span className="text-slate-100 font-bold">{room.turnDuration} сек</span></p>
+                  <p>Голосование: <span className="text-slate-100 font-bold">{room.secretVoting !== false ? 'тайное' : 'открытое'}</span></p>
+                  {room.lineageEnabled && <p>После финала: <span className="text-slate-100 font-bold">«Продолжить род»</span></p>}
                 </div>
               )}
             </div>
@@ -348,7 +348,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                   onClick={() => setSelectedAvatar(av.id)}
                   className={`p-2.5 notch-sm border flex flex-col items-center gap-1 transition-all ${
                     selectedAvatar === av.id
-                      ? 'bg-amber-500/20 border-amber-500 text-white'
+                      ? 'bg-amber-500/20 border-amber-500 text-slate-100'
                       : 'bg-slate-800/40 border-slate-700 text-slate-400 hover:bg-slate-800'
                   }`}
                 >

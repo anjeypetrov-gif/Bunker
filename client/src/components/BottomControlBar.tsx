@@ -100,7 +100,7 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
 
   return (
     <>
-      <div className="bg-slate-950 border-t border-slate-800 p-2 px-2.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:p-2.5 md:px-4 flex md:flex-wrap items-center justify-between gap-2 md:gap-3 shrink-0 shadow-2xl z-20">
+      <div className="bg-slate-950 border-t border-slate-800 p-2 pl-2.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:p-2.5 md:pl-4 md:pr-14 pr-12 flex md:flex-wrap items-center justify-between gap-2 md:gap-3 shrink-0 shadow-2xl z-20">
 
         {/* Left: Media Toggles & Profile Status */}
         <div className="flex items-center gap-1.5 md:gap-2">
@@ -207,7 +207,7 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
           <div className="bg-slate-900 border border-amber-500/40 notch p-6 max-w-sm w-full max-h-[90vh] overflow-y-auto shadow-2xl space-y-4 relative">
             <button
               onClick={() => { setActionCardOpen(false); setActionTarget(null); }}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white font-mono text-sm font-bold p-1 cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-100 font-mono text-sm font-bold p-1 cursor-pointer"
             >
               ✕
             </button>
@@ -233,7 +233,7 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
               </span>
               <div>
                 <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">СПЕЦКАРТА ДЕЙСТВИЯ</span>
-                <h3 className="text-lg font-black text-white font-mono">{actionCard.title}</h3>
+                <h3 className="text-lg font-black text-slate-100 font-mono">{actionCard.title}</h3>
               </div>
             </div>
 

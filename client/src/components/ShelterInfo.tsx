@@ -145,7 +145,7 @@ export const ShelterInfo: React.FC<ShelterInfoProps> = ({
                 <p className="text-slate-300 leading-relaxed font-sans">{room.shelter.description}</p>
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 pt-1">
                   <span>Оснащение: <strong className="text-emerald-300">{room.shelter.equipment.slice(0, 2).join(', ')}</strong></span>
-                  <span>Осталось в живых: <strong className="text-white font-bold">{activePlayers.length}</strong></span>
+                  <span>Осталось в живых: <strong className="text-slate-100 font-bold">{activePlayers.length}</strong></span>
                 </div>
               </div>
             </div>
@@ -186,7 +186,7 @@ export const ShelterInfo: React.FC<ShelterInfoProps> = ({
                 <p className="text-slate-300 leading-relaxed font-sans">{room.shelter.description}</p>
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 pt-1">
                   <span>Оснащение: <strong className="text-emerald-300">{room.shelter.equipment.slice(0, 2).join(', ')}</strong></span>
-                  <span>Осталось в живых: <strong className="text-white font-bold">{activePlayers.length}</strong></span>
+                  <span>Осталось в живых: <strong className="text-slate-100 font-bold">{activePlayers.length}</strong></span>
                 </div>
               </div>
                 <button onClick={() => setDetailsOpen(false)} className="w-full py-3 bg-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider notch-sm cursor-pointer">ПОНЯТНО</button>

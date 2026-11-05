@@ -228,7 +228,7 @@ export const App: React.FC = () => {
   // Screen routing
   if (restoring) {
     return (
-      <div className="min-h-screen bg-[#0b0e14] text-slate-100 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-page text-slate-100 flex items-center justify-center p-4">
         <div className="flex flex-col items-center gap-3 text-slate-400 font-mono text-sm">
           <Shield className="w-8 h-8 text-amber-400 animate-pulse" />
           <span>ВОССТАНОВЛЕНИЕ СЕССИИ...</span>
@@ -240,7 +240,7 @@ export const App: React.FC = () => {
   if (!room || room.phase === 'LOBBY') {
     return (
       <div
-        className="min-h-screen text-slate-100 p-4 relative bg-[#0b0e14] bg-cover bg-center"
+        className="min-h-screen text-slate-100 p-4 relative bg-page bg-cover bg-center"
         style={{ backgroundImage: `url(${entryBackground})` }}
       >
         {/* Darkening overlay — keeps the entry/waiting-room cards (already
@@ -269,7 +269,7 @@ export const App: React.FC = () => {
 
   if (room.phase === 'GAME_OVER') {
     return (
-      <div className="min-h-screen bg-[#0b0e14] text-slate-100 p-4">
+      <div className="min-h-screen bg-page text-slate-100 p-4">
         <GameOver
           room={room}
           currentSocketId={currentSocketId}
@@ -286,7 +286,7 @@ export const App: React.FC = () => {
 
   // Unified Single Screen Layout (Единый экран игры)
   return (
-    <div className="h-[100dvh] w-screen bg-[#0b0e14] text-slate-100 flex flex-col overflow-hidden select-none">
+    <div className="h-[100dvh] w-screen bg-page text-slate-100 flex flex-col overflow-hidden select-none">
       {/* Top Header: Compact Shelter Status Banner */}
       <div className="shrink-0 p-2.5 pb-0">
         <ShelterInfo room={room} currentSocketId={currentSocketId} onAdvancePhase={handleAdvancePhase} />
@@ -373,7 +373,7 @@ export const App: React.FC = () => {
       <VoteReveal room={room} />
 
       {room.paused && (
-        <div className="fixed inset-0 z-[95] bg-black/75 backdrop-blur-sm flex flex-col items-center justify-center gap-4 text-center p-6">
+        <div className="fixed inset-0 z-[95] bg-slate-950/75 backdrop-blur-sm flex flex-col items-center justify-center gap-4 text-center p-6">
           <div className="text-5xl">⏸</div>
           <div className="text-2xl font-black text-amber-300 tracking-wider font-mono">ПАУЗА</div>
           <div className="text-sm text-slate-300 font-mono">Хост приостановил игру. Таймеры остановлены.</div>

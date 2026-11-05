@@ -9,7 +9,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
   render() {
     if (!this.state.failed) return this.props.children;
     return (
-      <div className="min-h-screen bg-[#0b0e14] text-slate-100 flex items-center justify-center p-6 text-center">
+      <div className="min-h-screen bg-page text-slate-100 flex items-center justify-center p-6 text-center">
         <div className="space-y-4 max-w-sm">
           <div className="text-4xl">⚠️</div>
           <div className="text-lg font-black text-amber-300">Что-то пошло не так</div>
