@@ -125,3 +125,16 @@ html[data-theme='light'] .bg-amber-950\/30 { background-color: rgba(253, 230, 13
 @media (prefers-reduced-motion: reduce) {
   .action-card-glow, .action-card-glow::after { animation: none; }
 }
+
+/* Light theme: чёткие границы и затемнение фона под модальными окнами */
+html[data-theme='light'] .border-slate-800,
+html[data-theme='light'] .border-slate-800\/80,
+html[data-theme='light'] .border-slate-800\/60 { border-color: #b6c2d2; }
+html[data-theme='light'] .border-slate-700,
+html[data-theme='light'] .border-slate-700\/60,
+html[data-theme='light'] .border-slate-600 { border-color: #8d9bb0; }
+html[data-theme='light'] .border-t, html[data-theme='light'] .border-b { border-color: #b6c2d2; }
+html[data-theme='light'] .fixed.inset-0[class*='bg-slate-950'] { background-color: rgba(15, 23, 42, 0.6); }
+html[data-theme='light'] .fixed.inset-0 > .notch,
+html[data-theme='light'] .fixed.inset-0 > div[class*='bg-slate-9'] { box-shadow: 0 10px 40px rgba(15, 23, 42, 0.35); }
+html[data-theme='light'] .bg-slate-900, html[data-theme='light'] .bg-slate-900\/90, html[data-theme='light'] .bg-slate-900\/80 { box-shadow: inset 0 0 0 1px #c3cddb; }
