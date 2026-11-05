@@ -31,6 +31,10 @@ export class WebRTCManager {
   private onPeerStateCallback: ((socketId: string, state: string) => void) | null = null;
   private peerStates: Record<string, string> = {};
   private retries: Record<string, number> = {};
+  // Желаемое состояние микрофона/камеры: применяется и к будущим потокам, не только к текущему.
+  private wantAudio = true;
+  private wantVideo = true;
+  private needOfferTimers: Record<string, number> = {};
   private lastSelfId = '';
   private lastRoster: { id: string; isConnected?: boolean }[] = [];
 
@@ -68,6 +72,7 @@ export class WebRTCManager {
         console.warn('[WebRTC] Could not access real camera/mic, fallback stream will be generated.', err);
         this.localStream = this.createDummyStream();
       }
+      this.applyMedia();
       return this.localStream;
     })();
     return this.localStreamPromise;
@@ -135,6 +140,17 @@ export class WebRTCManager {
       if (!this.peerConnections[p.id] && !this.creating[p.id] && selfId < p.id) {
         this.createPeer(p.id, true).catch(e => console.error('[WebRTC] createPeer error', e));
       }
+      // Принимающая сторона: если offer так и не пришёл, просим инициатора прислать его заново.
+      if (selfId > p.id && !this.peerConnections[p.id] && !this.needOfferTimers[p.id]) {
+        this.needOfferTimers[p.id] = window.setTimeout(() => {
+          delete this.needOfferTimers[p.id];
+          const stillWanted = this.lastRoster.some(r => r.id === p.id && r.isConnected !== false);
+          if (stillWanted && !this.peerConnections[p.id] && !this.creating[p.id]) {
+            socket.emit('send_signal', { targetId: p.id, signalData: { type: 'need_offer' } });
+            this.syncPeers(this.lastSelfId, this.lastRoster);
+          }
+        }, 7000);
+      }
     });
     Object.keys(this.peerConnections).forEach(id => {
       if (!wanted.has(id)) this.removePeer(id);
@@ -153,6 +169,7 @@ export class WebRTCManager {
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
       this.peerConnections[targetSocketId] = pc;
 
+      this.applyMedia();
       this.localStream?.getTracks().forEach(track => pc.addTrack(track, this.localStream!));
 
       pc.ontrack = (event) => {
@@ -208,6 +225,14 @@ export class WebRTCManager {
   }
 
   public async handleIncomingSignal(callerId: string, signalData: any) {
+    if (!signalData || typeof signalData !== 'object') return;
+    if (signalData.type === 'need_offer') {
+      if (this.lastSelfId && this.lastSelfId < callerId) {
+        this.removePeer(callerId, true);
+        await this.createPeer(callerId, true);
+      }
+      return;
+    }
     if (signalData.type === 'offer') {
       // Новый offer от пира, у которого уже есть соединение (например, после рестарта) — пересоздаём.
       if (this.peerConnections[callerId]) this.removePeer(callerId, true);
@@ -243,6 +268,7 @@ export class WebRTCManager {
       delete this.peerConnections[socketId];
     }
     delete this.pendingCandidates[socketId];
+    if (this.needOfferTimers[socketId]) { clearTimeout(this.needOfferTimers[socketId]); delete this.needOfferTimers[socketId]; }
     if (!silent) {
       this.setState(socketId, '');
       delete this.remoteStreams[socketId];
@@ -250,12 +276,26 @@ export class WebRTCManager {
     }
   }
 
+  private applyMedia() {
+    this.localStream?.getAudioTracks().forEach(t => { t.enabled = this.wantAudio; });
+    this.localStream?.getVideoTracks().forEach(t => { t.enabled = this.wantVideo; });
+  }
+
   public toggleAudio(enabled: boolean) {
-    this.localStream?.getAudioTracks().forEach(t => { t.enabled = enabled; });
+    this.wantAudio = enabled;
+    this.applyMedia();
   }
 
   public toggleVideo(enabled: boolean) {
-    this.localStream?.getVideoTracks().forEach(t => { t.enabled = enabled; });
+    this.wantVideo = enabled;
+    this.applyMedia();
+  }
+
+  /** Привести треки в соответствие с состоянием игрока на сервере. */
+  public syncMedia(audioMuted: boolean, videoOff: boolean) {
+    this.wantAudio = !audioMuted;
+    this.wantVideo = !videoOff;
+    this.applyMedia();
   }
 
   public destroy() {

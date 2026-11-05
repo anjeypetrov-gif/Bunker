@@ -8,7 +8,7 @@ interface LobbyProps {
   onCreateRoom: (name: string, avatar: string) => void;
   onJoinRoom: (code: string, name: string, avatar: string) => void;
   onStartGame: () => void;
-  onUpdateSettings: (settings: { maxPlayers?: number; turnDuration?: number }) => void;
+  onUpdateSettings: (settings: { maxPlayers?: number; turnDuration?: number; secretVoting?: boolean; lineageEnabled?: boolean }) => void;
   onAddBot?: () => void;
   onFillBots?: () => void;
   onKickPlayer?: (targetId: string) => void;
@@ -205,11 +205,30 @@ export const Lobby: React.FC<LobbyProps> = ({
                       className="w-full accent-amber-500 cursor-pointer"
                     />
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onUpdateSettings({ secretVoting: !(room.secretVoting !== false) })}
+                    className="w-full flex items-center justify-between gap-3 p-2 border border-slate-800 hover:border-amber-500/40 cursor-pointer text-left transition-colors"
+                  >
+                    <span className="text-slate-300">ТАЙНОЕ ГОЛОСОВАНИЕ<span className="block text-[10px] text-slate-500 normal-case">никто не видит, кто за кого проголосовал</span></span>
+                    <span className={`px-2 py-0.5 font-bold ${room.secretVoting !== false ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>{room.secretVoting !== false ? 'ВКЛ' : 'ВЫКЛ'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateSettings({ lineageEnabled: !room.lineageEnabled })}
+                    className="w-full flex items-center justify-between gap-3 p-2 border border-slate-800 hover:border-amber-500/40 cursor-pointer text-left transition-colors"
+                  >
+                    <span className="text-slate-300">ПРОДОЛЖИТЬ РОД<span className="block text-[10px] text-slate-500 normal-case">после финала выжившие проживут несколько поколений</span></span>
+                    <span className={`px-2 py-0.5 font-bold ${room.lineageEnabled ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>{room.lineageEnabled ? 'ВКЛ' : 'ВЫКЛ'}</span>
+                  </button>
                 </div>
               ) : (
                 <div className="text-xs text-slate-400 space-y-2 font-mono">
                   <p>Ожидание запуска игры организатором...</p>
                   <p>Таймер выступающего: <span className="text-white font-bold">{room.turnDuration} сек</span></p>
+                  <p>Голосование: <span className="text-white font-bold">{room.secretVoting !== false ? 'тайное' : 'открытое'}</span></p>
+                  {room.lineageEnabled && <p>После финала: <span className="text-white font-bold">«Продолжить род»</span></p>}
                 </div>
               )}
             </div>

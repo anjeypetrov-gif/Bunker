@@ -15,6 +15,8 @@ const CARD_TYPE_LABELS: Record<CardType, string> = {
   baggage: 'БАГАЖ',
   secret: 'СЕКРЕТНЫЙ ФАКТ',
   condition: 'УСЛОВИЕ / БОНУС',
+  phobia: 'ФОБИЯ',
+  knowledge: 'ЗНАНИЕ',
   actionCard: 'СПЕЦКАРТА ДЕЙСТВИЯ'
 };
 
@@ -94,8 +96,14 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
     .map(p => p.id)
     .sort()
     .join(',');
+  // Микрофон и камера всегда соответствуют тому, что показано в интерфейсе (в т.ч. после переподключения).
+  useEffect(() => {
+    webRTCManager.syncMedia(audioMuted, videoOff);
+  }, [audioMuted, videoOff]);
+
   useEffect(() => {
     webRTCManager.getLocalStream(true, true).then(() => {
+      webRTCManager.syncMedia(audioMuted, videoOff);
       webRTCManager.syncPeers(currentSocketId, Object.values(players));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps

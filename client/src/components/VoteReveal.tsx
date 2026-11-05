@@ -42,7 +42,7 @@ export const VoteReveal: React.FC<{ room: RoomState }> = ({ room }) => {
   return (
     <div className="fixed inset-0 z-[90] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => verdict && setDismissed(key)}>
       <div className="w-full max-w-md space-y-4 font-mono" onClick={e => e.stopPropagation()}>
-        <div className="text-center text-xs tracking-[0.3em] text-slate-400">ИТОГИ ГОЛОСОВАНИЯ</div>
+        <div className="text-center text-xs tracking-[0.3em] text-slate-400">ИТОГИ ГОЛОСОВАНИЯ{room.secretVoting !== false && <span className="block mt-1 text-[10px] tracking-widest text-slate-500">ТАЙНОЕ ГОЛОСОВАНИЕ</span>}</div>
         <div className="space-y-2">
           {rows.map((p, idx) => (
             <div
@@ -58,7 +58,7 @@ export const VoteReveal: React.FC<{ room: RoomState }> = ({ room }) => {
               <div className="mt-1.5 h-1.5 bg-slate-800 overflow-hidden">
                 <div className="h-full bg-amber-400 transition-all duration-700" style={{ width: idx < shown ? `${((p.votesCount || 0) / maxVotes) * 100}%` : '0%' }} />
               </div>
-              <div className="mt-1 text-[10px] text-slate-500 truncate">{votersOf(p.id).join(', ')}</div>
+              {room.secretVoting === false && <div className="mt-1 text-[10px] text-slate-500 truncate">{votersOf(p.id).join(', ')}</div>}
             </div>
           ))}
           {rows.length === 0 && <div className="text-center text-slate-500 text-sm py-4">Голосов не было</div>}

@@ -215,7 +215,7 @@ export class GameEngine {
       code,
       hostId: hostSocketId,
       maxPlayers: 8,
-      bunkerCapacity: 4,
+      bunkerCapacity: 1,
       turnDuration: 60,
       currentRound: 1,
       phase: 'LOBBY',
@@ -919,7 +919,6 @@ export class GameEngine {
         break;
       }
       case 'DOUBLE_VOTE': {
-        if (room.phase === 'CARD_REVEAL') return null;
         player.voteWeight = 2;
         // Если уже проголосовал — добавляем второй голос к своему выбору.
         if (room.phase === 'VOTING' && player.hasVoted) {

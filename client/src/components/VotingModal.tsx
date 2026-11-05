@@ -6,12 +6,14 @@ interface VotingModalProps {
   players: Record<string, Player>;
   currentSocketId: string;
   onCastVote: (targetId: string) => void;
+  secretVoting?: boolean;
 }
 
 export const VotingModal: React.FC<VotingModalProps> = ({
   players,
   currentSocketId,
-  onCastVote
+  onCastVote,
+  secretVoting = true
 }) => {
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
 
@@ -31,6 +33,9 @@ export const VotingModal: React.FC<VotingModalProps> = ({
           <h2 className="text-2xl font-black text-slate-100 uppercase tracking-wider font-display">ГОЛОСОВАНИЕ НА ИЗГНАНИЕ</h2>
           <p className="text-xs text-slate-400 font-mono">
             Выберите игрока, чье присутствие в бункере наименее полезно для выживания человечества.
+          </p>
+          <p className="text-[11px] text-slate-500 font-mono">
+            {secretVoting ? 'Тайное голосование: никто не узнает, за кого вы проголосовали.' : 'Открытое голосование: все увидят, кто за кого проголосовал.'}
           </p>
           {currentPlayer?.voteWeight === 2 && !hasVoted && (
             <p className="text-[11px] text-amber-300 font-mono bg-amber-500/10 border border-amber-500/30 notch-sm py-1 px-2 inline-block">

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Briefcase, HeartPulse, User, Smile, ShieldAlert, Package, Key, Sparkles, Eye, Lock, X, CheckCircle2 } from './icons';
+import { Briefcase, HeartPulse, User, Smile, ShieldAlert, Package, Key, Sparkles, Skull, Eye, Lock, X, CheckCircle2 } from './icons';
 import { Card, CardType, Player } from '../types/game';
 import { getCardArt } from '../data/cardArt';
 
@@ -21,6 +21,8 @@ const CARD_ICONS: Record<CardType, any> = {
   baggage: Package,
   secret: Key,
   condition: CheckCircle2,
+  phobia: Skull,
+  knowledge: Eye,
   actionCard: Sparkles
 };
 
@@ -33,6 +35,8 @@ const CARD_LABELS: Record<CardType, string> = {
   baggage: 'БАГАЖ',
   secret: 'СЕКРЕТНЫЙ ФАКТ',
   condition: 'УСЛОВИЕ / БОНУС',
+  phobia: 'ФОБИЯ',
+  knowledge: 'ЗНАНИЕ',
   actionCard: 'СПЕЦКАРТА ДЕЙСТВИЯ'
 };
 
@@ -48,7 +52,7 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
 
   if (!player || !player.cards) return null;
 
-  const cardKeys: CardType[] = ['profession', 'health', 'biology', 'hobby', 'trait', 'baggage', 'secret', 'condition', 'actionCard'];
+  const cardKeys: CardType[] = ['profession', 'health', 'biology', 'hobby', 'trait', 'baggage', 'secret', 'condition', 'phobia', 'knowledge', 'actionCard'];
 
   return (
     <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4">

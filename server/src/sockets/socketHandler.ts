@@ -24,6 +24,7 @@ export function registerSocketHandlers(io: Server, gameEngine: GameEngine) {
 
   // Ограничения частоты: общий поток событий, создание/вход в комнаты по IP, чат.
   const generalLimit = new RateLimiter(150, 10_000);   // событий на сокет за 10 с
+  const signalLimit = new RateLimiter(1500, 10_000);    // WebRTC-сигналы (ICE-кандидаты идут пачками)
   const roomEntryLimit = new RateLimiter(20, 60_000);   // создание/вход по IP за минуту
   const chatLimit = new RateLimiter(10, 10_000);        // сообщений чата за 10 с
 
@@ -36,7 +37,8 @@ export function registerSocketHandlers(io: Server, gameEngine: GameEngine) {
     const on = (event: string, fn: (payload: any, cb?: any) => void) => {
       socket.on(event, (...args: any[]) => {
         try {
-          if (!generalLimit.take(socket.id)) return;
+          const isSignal = event === 'send_signal' || event === 'return_signal';
+          if (!(isSignal ? signalLimit : generalLimit).take(socket.id)) return;
           const raw = args[0];
           const payload: Record<string, any> = isPlainObject(raw) ? { ...raw } : {};
           if ('code' in payload) payload.code = cleanCode(payload.code);

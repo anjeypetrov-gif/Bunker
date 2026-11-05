@@ -131,7 +131,7 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleUpdateSettings = (settings: { maxPlayers?: number; turnDuration?: number }) => {
+  const handleUpdateSettings = (settings: { maxPlayers?: number; turnDuration?: number; secretVoting?: boolean; lineageEnabled?: boolean }) => {
     if (room) {
       socket.emit('update_settings', { code: room.code, settings });
     }
@@ -202,6 +202,10 @@ export const App: React.FC = () => {
     }
   };
 
+  const lineageEmit = (event: string, extra: Record<string, unknown> = {}) => {
+    if (room) socket.emit(event, { code: room.code, ...extra });
+  };
+
   const handleRestart = () => {
     if (room) {
       socket.emit('start_game', { code: room.code });
@@ -266,7 +270,15 @@ export const App: React.FC = () => {
   if (room.phase === 'GAME_OVER') {
     return (
       <div className="min-h-screen bg-[#0b0e14] text-slate-100 p-4">
-        <GameOver room={room} currentSocketId={currentSocketId} onRestart={handleRestart} />
+        <GameOver
+          room={room}
+          currentSocketId={currentSocketId}
+          onRestart={handleRestart}
+          onStartLineage={() => lineageEmit('start_lineage')}
+          onLineageVote={(optionId) => lineageEmit('lineage_vote', { optionId })}
+          onLineageResolve={() => lineageEmit('lineage_resolve')}
+          onLineageNext={() => lineageEmit('lineage_next')}
+        />
       </div>
     );
   }
@@ -378,6 +390,7 @@ export const App: React.FC = () => {
           players={room.players}
           currentSocketId={currentSocketId}
           onCastVote={handleCastVote}
+          secretVoting={room.secretVoting !== false}
         />
       )}
     </div>

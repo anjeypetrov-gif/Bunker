@@ -1,17 +1,26 @@
 import React from 'react';
 import { Trophy, Skull, Home, RefreshCw } from './icons';
 import { RoomState } from '../types/game';
+import { LineagePanel } from './LineagePanel';
 
 interface GameOverProps {
   room: RoomState;
   currentSocketId: string;
   onRestart: () => void;
+  onStartLineage: () => void;
+  onLineageVote: (optionId: string) => void;
+  onLineageResolve: () => void;
+  onLineageNext: () => void;
 }
 
 export const GameOver: React.FC<GameOverProps> = ({
   room,
   currentSocketId,
-  onRestart
+  onRestart,
+  onStartLineage,
+  onLineageVote,
+  onLineageResolve,
+  onLineageNext
 }) => {
   const isHost = room.hostId === currentSocketId;
   const survivors = Object.values(room.players).filter(p => !p.isExiled);
@@ -41,6 +50,8 @@ export const GameOver: React.FC<GameOverProps> = ({
   survivalChance -= Math.min(24, badHealth * 6);
   if (survivors.length < room.bunkerCapacity) survivalChance -= 10;
   survivalChance = Math.min(97, Math.max(8, survivalChance));
+  if (typeof room.survivalChance === 'number') survivalChance = room.survivalChance;
+  const failed = room.gameFailed ?? survivalChance < 40;
 
   const missing: string[] = [];
   if (!hasDoctor) missing.push('врача');
@@ -57,7 +68,7 @@ export const GameOver: React.FC<GameOverProps> = ({
       ? `Без ${missing.length ? missing.join(' и ') : 'надёжного плана'} зима выдалась тяжёлой. Запасы таяли, болезни не отпускали, но вера в общее дело всё же не давала сдаться. Дальше всё решит одна-две удачные зимы.`
       : `Бункер заперт, но внутри не хватало слишком многого${missing.length ? `: ${missing.join(', ')}` : ''}. Хроника прервалась на третьей зиме. Возможно, голосование было слишком поспешным.`;
 
-  const shareText = `БУНКЕР — итог партии\n${verdict}: шанс на возрождение ${survivalChance}%\nВыжили: ${survivors.map(p => p.name).join(', ')}\nИзгнаны: ${exiled.map(p => p.name).join(', ') || 'никто'}\nИграть: ${window.location.origin}`;
+  const shareText = `БУНКЕР — итог партии\n${verdict}: шанс на возрождение ${survivalChance}%${failed ? ' (ПРОВАЛ)' : ''}\nВыжили: ${survivors.map(p => p.name).join(', ')}\nИзгнаны: ${exiled.map(p => p.name).join(', ') || 'никто'}\nИграть: ${window.location.origin}`;
   const [shared, setShared] = React.useState(false);
   const share = async () => {
     try {
@@ -74,8 +85,11 @@ export const GameOver: React.FC<GameOverProps> = ({
           <Trophy className="w-12 h-12 text-amber-400" />
         </div>
         <h1 className="text-3xl font-black text-slate-100 tracking-wider uppercase font-display">
-          БУНКЕР УСПЕШНО ЗАПЕЧАТАН!
+          {failed ? 'ПРОВАЛЬНАЯ ПАРТИЯ' : 'БУНКЕР УСПЕШНО ЗАПЕЧАТАН!'}
         </h1>
+        {failed && (
+          <p className="text-sm font-bold text-red-400 font-mono uppercase">Шанс выживания ниже 40%: группа подобрана неудачно</p>
+        )}
         <p className="text-sm text-slate-400 font-mono">
           Двери закрыты. Группа изоляции готова к выживанию в течение {room.catastrophe?.durationYears || 10} лет.
         </p>
@@ -86,7 +100,7 @@ export const GameOver: React.FC<GameOverProps> = ({
         <div className="text-xs font-mono text-slate-400 uppercase tracking-widest">
           ШАНС НА ВОЗРОЖДЕНИЕ ЧЕЛОВЕЧЕСТВА
         </div>
-        <div className="text-5xl font-black font-mono text-amber-400">
+        <div className={`text-5xl font-black font-mono ${failed ? 'text-red-400' : 'text-amber-400'}`}>
           {survivalChance}%
         </div>
         <div className="text-sm font-bold text-slate-100 uppercase tracking-wider">{verdict}</div>
@@ -139,6 +153,10 @@ export const GameOver: React.FC<GameOverProps> = ({
           </div>
         </div>
       </div>
+
+      {room.lineageEnabled && survivors.length > 0 && (
+        <LineagePanel room={room} currentSocketId={currentSocketId} onStart={onStartLineage} onVote={onLineageVote} onResolve={onLineageResolve} onNext={onLineageNext} />
+      )}
 
       <div className="pt-4 border-t border-slate-800 text-center">
         <button
