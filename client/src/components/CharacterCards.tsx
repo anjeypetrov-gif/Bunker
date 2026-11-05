@@ -151,7 +151,7 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
                       <img
                         src={art!}
                         alt=""
-                        className={`w-full h-full object-cover ${locked ? 'opacity-60 grayscale-[35%]' : ''}`}
+                        className={`w-full h-full object-cover ${locked ? 'opacity-60 grayscale-[35%] card-art-locked' : ''}`}
                         onError={() => setArtFailed(prev => ({ ...prev, [key]: true }))}
                       />
                     ) : (
