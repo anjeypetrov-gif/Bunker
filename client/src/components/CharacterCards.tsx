@@ -115,10 +115,17 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
             return (
               <div
                 key={key}
-                className={`group relative flex flex-col justify-between p-4 notch border transition-all duration-200 bg-slate-950/60 ${
-                  locked ? 'border-slate-800' : 'border-amber-500/50 ring-1 ring-amber-500/20'
+                className={`group relative overflow-hidden flex flex-col justify-between p-4 notch border transition-all duration-200 bg-slate-950/60 ${
+                  isActionCard && !player.actionCardUsed
+                    ? 'action-card-glow'
+                    : locked ? 'border-slate-800' : 'border-amber-500/50 ring-1 ring-amber-500/20'
                 }`}
               >
+                {isActionCard && !player.actionCardUsed && (
+                  <span className="absolute top-0 right-0 z-10 px-2 py-0.5 bg-amber-400 text-slate-950 text-[9px] font-black tracking-widest font-mono uppercase">
+                    ★ СПЕЦКАРТА
+                  </span>
+                )}
                 <div>
                   <div className="flex items-center justify-between mb-3 border-b border-slate-800/80 pb-2">
                     <span className={`text-[10px] font-black tracking-wider px-2 py-0.5 notch-sm border flex items-center gap-1 font-mono uppercase ${

@@ -52,3 +52,29 @@
   background-image: repeating-linear-gradient(135deg, #d99a2b 0 8px, transparent 8px 16px);
   opacity: 0.9;
 }
+
+/* Спецкарта в планшете: яркая пульсирующая рамка (inset-тень, чтобы не обрезалась вырезом). */
+@keyframes actionCardPulse {
+  0%, 100% { border-color: rgba(251, 191, 36, 0.95); box-shadow: inset 0 0 0 2px rgba(251, 191, 36, 0.55), inset 0 0 22px rgba(251, 191, 36, 0.28); }
+  50% { border-color: rgba(249, 115, 22, 1); box-shadow: inset 0 0 0 3px rgba(249, 115, 22, 0.9), inset 0 0 34px rgba(249, 115, 22, 0.5); }
+}
+@keyframes actionCardShine {
+  0% { transform: translateX(-120%); }
+  60%, 100% { transform: translateX(120%); }
+}
+.action-card-glow {
+  border-width: 2px;
+  animation: actionCardPulse 1.6s ease-in-out infinite;
+  background-image: linear-gradient(135deg, rgba(251, 191, 36, 0.12), rgba(15, 23, 42, 0) 55%);
+}
+.action-card-glow::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.14) 50%, transparent 60%);
+  animation: actionCardShine 3.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .action-card-glow, .action-card-glow::after { animation: none; }
+}
