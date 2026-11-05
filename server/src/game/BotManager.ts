@@ -1,3 +1,4 @@
+import { emitRoom } from '../security';
 import { Server } from 'socket.io';
 import { GameEngine, REVEALABLE_CARD_TYPES } from './GameEngine';
 import { RoomState, Player } from '../types/game';
@@ -254,7 +255,7 @@ export class BotManager {
       const line = this.buildHumanReactionLine(currentHuman.name);
       gameEngine.addChatMessage(room.code, bot.id, line);
       const updated = gameEngine.getRoom(room.code);
-      if (updated) io.to(room.code).emit('room_updated', updated);
+      if (updated) emitRoom(io, updated);
     }, delay);
   }
 
@@ -275,7 +276,7 @@ export class BotManager {
         if (!bot || bot.isExiled) return;
         gameEngine.addChatMessage(code, speakerId, this.buildDiscussionLine(bot, cur));
         const updated = gameEngine.getRoom(code);
-        if (updated) io.to(code).emit('room_updated', updated);
+        if (updated) emitRoom(io, updated);
       }, delay);
     };
 
@@ -313,7 +314,7 @@ export class BotManager {
             const keyToReveal = this.getRandomItem(unrevealedKeys);
             gameEngine.revealCard(room.code, bot.id, keyToReveal);
             const updated = gameEngine.getRoom(room.code);
-            if (updated) io.to(room.code).emit('room_updated', updated);
+            if (updated) emitRoom(io, updated);
           }
         }, (idx + 1) * 1200);
       });
@@ -350,7 +351,7 @@ export class BotManager {
           const target = this.getRandomItem(otherTargets);
           gameEngine.castVote(room.code, bot.id, target.id);
           const updated = gameEngine.getRoom(room.code);
-          if (updated) io.to(room.code).emit('room_updated', updated);
+          if (updated) emitRoom(io, updated);
 
           // If THIS bot's vote was the one that completed the round (the
           // human host doesn't always cast the deciding vote), the phase
@@ -371,7 +372,7 @@ export class BotManager {
               const reason = this.buildVoteReasonLine(targetNow);
               gameEngine.addChatMessage(room.code, bot.id, reason);
               const reasonUpdated = gameEngine.getRoom(room.code);
-              if (reasonUpdated) io.to(room.code).emit('room_updated', reasonUpdated);
+              if (reasonUpdated) emitRoom(io, reasonUpdated);
             }, 400 + Math.random() * 700);
           }
         }, (idx + 1) * 1500);
@@ -391,7 +392,7 @@ export class BotManager {
         const line = this.buildResultReactionLine(currentRoom);
         gameEngine.addChatMessage(room.code, bot.id, line);
         const updated = gameEngine.getRoom(room.code);
-        if (updated) io.to(room.code).emit('room_updated', updated);
+        if (updated) emitRoom(io, updated);
       }, 1500);
     }
   }

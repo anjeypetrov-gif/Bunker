@@ -1,3 +1,4 @@
+import { emitRoom, originAllowed } from './security';
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
@@ -14,8 +15,27 @@ import { track, flushEvents, geoLookup, parseUA, hashVisitor, report, Bucket } f
 import { adminPageHtml } from './adminPage';
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+app.disable('x-powered-by');
+app.set('trust proxy', true);
+
+// Заголовки безопасности (CSP не включаем: страницу и WebRTC легко сломать)
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(), payment=()');
+  next();
+});
+
+// Запросы к API принимаем только с наших страниц (и без заголовка Origin — приложение, curl)
+app.use(cors((req, cb) => cb(null, {
+  origin: originAllowed(req.headers.origin as string | undefined, req.headers.host)
+})));
+app.use(express.json({ limit: '20kb' }));
+
+// Ошибки не должны ронять процесс: логируем и продолжаем работу
+process.on('uncaughtException', e => console.error('[uncaughtException]', e));
+process.on('unhandledRejection', e => console.error('[unhandledRejection]', e));
 
 // Serve static client files when built
 const clientDist = path.join(__dirname, '../../client/dist');
@@ -24,10 +44,13 @@ app.use(express.static(clientDist));
 const server = http.createServer(app);
 
 const io = new Server(server, {
+  // Сообщения клиента маленькие (чат, сигналы WebRTC) — большие пакеты не нужны
+  maxHttpBufferSize: 100_000,
   cors: {
-    origin: '*',
+    origin: (origin, cb) => cb(null, originAllowed(origin, undefined)),
     methods: ['GET', 'POST']
-  }
+  },
+  allowRequest: (req, cb) => cb(null, originAllowed(req.headers.origin, req.headers.host))
 });
 
 const gameEngine = new GameEngine();
@@ -57,7 +80,7 @@ if (restored > 0) {
   setTimeout(() => {
     for (const { code, id } of gameEngine.listOfflineHumans()) {
       const res = gameEngine.leaveRoom(id);
-      if (res.room) io.to(code).emit('room_updated', res.room);
+      if (res.room) emitRoom(io, res.room);
     }
   }, 120000);
 }
@@ -101,7 +124,18 @@ app.post('/api/client-error', (req, res) => {
 const clientIp = (req: express.Request) =>
   String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
 
+const hitHits = new Map<string, { n: number; reset: number }>();
+const hitLimit = (ip: string) => {
+  const now = Date.now();
+  const h = hitHits.get(ip) || { n: 0, reset: now + 60000 };
+  if (now > h.reset) { h.n = 0; h.reset = now + 60000; }
+  h.n += 1; hitHits.set(ip, h);
+  if (hitHits.size > 5000) hitHits.clear();
+  return h.n <= 20;
+};
+
 app.post('/api/hit', (req, res) => {
+  if (!hitLimit(clientIp(req))) return res.status(429).end();
   stats.visit();
   const b = req.body || {};
   const ua = parseUA(String(req.headers['user-agent'] || ''));
@@ -132,12 +166,23 @@ app.post('/api/rtc', (req, res) => {
   res.status(204).end();
 });
 
+const adminFails = new Map<string, { n: number; reset: number }>();
 const adminOk = (req: express.Request): boolean => {
   const token = process.env.ADMIN_TOKEN;
   if (!token) return false;
+  const ip = clientIp(req);
+  const now = Date.now();
+  const f = adminFails.get(ip);
+  if (f && now < f.reset && f.n >= 10) return false; // слишком много неверных попыток — блок на 15 минут
   const given = String(req.query.token || req.headers['x-admin-token'] || '');
   const a = Buffer.from(given), bb = Buffer.from(token);
-  return a.length === bb.length && crypto.timingSafeEqual(a, bb);
+  const ok = a.length === bb.length && crypto.timingSafeEqual(a, bb);
+  if (!ok) {
+    const cur = f && now < f.reset ? f : { n: 0, reset: now + 15 * 60000 };
+    cur.n += 1; adminFails.set(ip, cur);
+    if (adminFails.size > 2000) adminFails.clear();
+  }
+  return ok;
 };
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 

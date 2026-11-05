@@ -229,7 +229,9 @@ export class GameEngine {
       roundEvent: null,
       paused: false,
       speechDuration: 60,
-      speechRemainingMs: 0
+      speechRemainingMs: 0,
+      secretVoting: true,
+      lineageEnabled: false
     };
     this.attachSpeechClock(room);
 
@@ -242,7 +244,7 @@ export class GameEngine {
   }
 
   public joinRoom(code: string, socketId: string, name: string, avatar: string): { room: RoomState; sessionToken: string } | null {
-    const room = this.rooms[code.toUpperCase()];
+    const room = this.rooms[String(code || "").toUpperCase()];
     if (!room) return null;
     if (Object.keys(room.players).length >= room.maxPlayers) return null;
     if (room.phase !== 'LOBBY') return null;
@@ -291,7 +293,7 @@ export class GameEngine {
   // so the caller can cancel any pending grace-period removal timer for it.
   public reconnectPlayer(code: string, sessionToken: string, newSocketId: string): { room: RoomState; previousSocketId: string } | null {
     const entry = this.tokenMap[sessionToken];
-    if (!entry || entry.code !== code.toUpperCase()) return null;
+    if (!entry || entry.code !== String(code || "").toUpperCase()) return null;
 
     const room = this.rooms[entry.code];
     if (!room) {
@@ -371,16 +373,30 @@ export class GameEngine {
   }
 
   public getRoom(code: string): RoomState | null {
-    return this.rooms[code.toUpperCase()] || null;
+    return this.rooms[String(code || "").toUpperCase()] || null;
   }
 
-  public updateSettings(code: string, socketId: string, settings: { maxPlayers?: number; turnDuration?: number }): RoomState | null {
+  public updateSettings(
+    code: string,
+    socketId: string,
+    settings: { maxPlayers?: number; turnDuration?: number; secretVoting?: boolean; lineageEnabled?: boolean }
+  ): RoomState | null {
     const room = this.rooms[code];
     if (!room || room.hostId !== socketId || room.phase !== 'LOBBY') return null;
 
-    if (settings.maxPlayers) room.maxPlayers = settings.maxPlayers;
+    if (settings.maxPlayers) room.maxPlayers = Math.max(settings.maxPlayers, Object.keys(room.players).length);
     if (settings.turnDuration) room.turnDuration = settings.turnDuration;
+    if (typeof settings.secretVoting === 'boolean') room.secretVoting = settings.secretVoting;
+    if (typeof settings.lineageEnabled === 'boolean') room.lineageEnabled = settings.lineageEnabled;
     return room;
+  }
+
+  /** Комната, в которой состоит этот сокет (или null). */
+  public getRoomBySocket(socketId: string): RoomState | null {
+    for (const code in this.rooms) {
+      if (this.rooms[code].players[socketId]) return this.rooms[code];
+    }
+    return null;
   }
 
   public startGame(code: string, socketId: string): RoomState | null {

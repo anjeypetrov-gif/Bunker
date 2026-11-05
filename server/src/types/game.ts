@@ -117,4 +117,7 @@ export interface RoomState {
   speechDuration: number;
   // Сколько мс осталось у говорящего на момент отправки (без зависимости от часов клиента).
   speechRemainingMs: number;
+  // Настройки партии (задаёт хост в лобби)
+  secretVoting: boolean;   // тайное голосование: никто не видит, кто за кого проголосовал
+  lineageEnabled: boolean; // после финала — игра «Продолжить род» для прошедших в бункер
 }
