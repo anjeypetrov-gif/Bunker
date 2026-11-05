@@ -224,9 +224,9 @@ const SIMILAR: Partial<Record<CardType, Record<string, string>>> = {
 // Новые карты: используем иллюстрации близких по смыслу карт, пока нет собственных.
 const EXTRA: Partial<Record<CardType, Record<string, string>>> = {
   profession: {
-    'Врач скорой помощи': 'profession-vrach-khirurg.png',
-    'Врач-инфекционист': 'profession-vrach-khirurg.png',
-    'Миколог': 'profession-agronom-bioekolog.png',
+    'Врач скорой помощи': 'new-profession-00.png',
+    'Врач-инфекционист': 'new-profession-01.png',
+    'Миколог': 'new-profession-02.png',
     'Биохимик': 'profession-khimik-laborant.png',
     'Ботаник': 'profession-agronom-bioekolog.png',
     'Астроном': 'profession-fizik-yadershchik.png',
@@ -284,7 +284,7 @@ const EXTRA: Partial<Record<CardType, Record<string, string>>> = {
     'Клаустрофобия': 'trait-klaustrofobiya.png',
     'Агорафобия': 'trait-klaustrofobiya.png',
     'Акрофобия': 'trait-klaustrofobiya.png',
-    'Арахнофобия': 'trait-paranoik.png',
+    'Арахнофобия': 'new-phobia-48.png',
     'Офидиофобия': 'trait-paranoik.png',
     'Кинофобия': 'trait-paranoik.png',
     'Гемофобия': 'health-perelom-ruki-v-gipse.png',
