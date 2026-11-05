@@ -97,8 +97,24 @@ export function sanitizeRoomFor(room: RoomState, viewerId: string): RoomState {
     ? room.chatMessages
     : room.chatMessages.filter(m => !m.ghost);
 
+  // «Продолжить род»: чужие выборы скрыты, пока поколение не подведено; подсказки движка не отдаём.
+  let lineage = room.lineage;
+  if (lineage) {
+    const choosing = lineage.step === 'CHOOSE';
+    lineage = {
+      ...lineage,
+      votes: choosing
+        ? Object.fromEntries(Object.entries(lineage.votes).filter(([id]) => id === viewerId || id.startsWith('bot-')))
+        : lineage.votes,
+      event: lineage.event
+        ? { ...lineage.event, options: lineage.event.options.map(o => ({ ...o, keys: [], risk: 0 })) }
+        : null
+    };
+  }
+
   return {
     ...room,
+    lineage,
     players,
     votes,
     chatMessages,

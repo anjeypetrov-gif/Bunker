@@ -15,6 +15,8 @@ export const CARD_TYPE_LABELS_RU: Record<CardType, string> = {
   baggage: 'багаж',
   secret: 'секретный факт',
   condition: 'условие/бонус',
+  phobia: 'фобия',
+  knowledge: 'знание',
   actionCard: 'спецкарта'
 };
 

@@ -68,7 +68,7 @@ gameEngine.onGameOver = (room) => {
   stats.gameFinished();
   const t0 = gameStartedAt.get(room.code);
   gameStartedAt.delete(room.code);
-  track({ k: 'over', r: room.currentRound, d: t0 ? Math.round((Date.now() - t0) / 1000) : undefined });
+  track({ k: 'over', sv: room.survivalChance, fail: !!room.gameFailed, r: room.currentRound, d: t0 ? Math.round((Date.now() - t0) / 1000) : undefined });
 };
 registerSocketHandlers(io, gameEngine);
 

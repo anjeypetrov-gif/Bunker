@@ -174,6 +174,7 @@ function render(r,live){
     kpi('Созданы комнаты',fmt(t.rooms),t.rooms,p.rooms,false,'входов по коду: '+fmt(t.joins))+
     kpi('Игр начато',fmt(t.starts),t.starts,p.starts)+
     kpi('Игр завершено',fmt(t.overs),t.overs,p.overs,false,'доходят до конца: '+fmt1(t.completionPct)+'%')+
+    kpi('Провальные партии',t.overs?fmt1(t.failedPct)+'%':'—',t.overs?t.failedPct:null,p.failedPct,true,'шанс выживания <40% · всего '+fmt(t.failedGames)+' · средний шанс '+(t.overs?Math.round(t.avgSurvival)+'%':'—'))+
     kpi('Игроков в партии',fmt1(t.avgPlayers),t.avgPlayers,p.avgPlayers,false,'ботов в среднем: '+fmt1(t.avgBots))+
     kpi('Партии с ботами',fmt1(t.withBotsPct)+'%',null)+
     kpi('Длительность партии',fmt1(t.avgDurationMin)+' мин',t.avgDurationMin,p.avgDurationMin,false,'раундов: '+fmt1(t.avgRounds))+

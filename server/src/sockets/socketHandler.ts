@@ -247,6 +247,24 @@ export function registerSocketHandlers(io: Server, gameEngine: GameEngine) {
       }
     });
 
+    // «Продолжить род»
+    on('start_lineage', ({ code }) => {
+      const room = gameEngine.beginLineage(cleanCode(code), socket.id);
+      if (room) emitRoom(io, room);
+    });
+    on('lineage_vote', ({ code, optionId }) => {
+      const room = gameEngine.voteLineage(cleanCode(code), socket.id, cleanText(optionId, 24));
+      if (room) emitRoom(io, room);
+    });
+    on('lineage_resolve', ({ code }) => {
+      const room = gameEngine.resolveLineage(cleanCode(code), socket.id);
+      if (room) emitRoom(io, room);
+    });
+    on('lineage_next', ({ code }) => {
+      const room = gameEngine.nextLineage(cleanCode(code), socket.id);
+      if (room) emitRoom(io, room);
+    });
+
     // Хост: пауза / продолжение
     on('toggle_pause', ({ code }) => {
       const room = gameEngine.togglePause(code, socket.id);

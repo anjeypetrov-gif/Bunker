@@ -1,3 +1,5 @@
+import { computeSurvival } from './survival';
+import { startLineage, lineageVote, allLineageVoted, resolveGeneration, nextGeneration } from './lineage';
 import { randomUUID } from 'crypto';
 import {
   RoomState,
@@ -18,6 +20,8 @@ import {
   BAGGAGES,
   SECRET_FACTS,
   CONDITIONS,
+  PHOBIAS,
+  KNOWLEDGE,
   ACTION_CARDS,
   SPECIAL_ROLES, ROUND_EVENTS } from '../data/decks';
 
@@ -25,7 +29,7 @@ import {
 // The action card is handled separately through useActionCard() and does
 // not count against the "one reveal per round" limit.
 export const REVEALABLE_CARD_TYPES: CardType[] = [
-  'profession', 'health', 'biology', 'hobby', 'trait', 'baggage', 'secret', 'condition'
+  'profession', 'health', 'biology', 'hobby', 'trait', 'baggage', 'secret', 'condition', 'phobia', 'knowledge'
 ];
 
 // Grammatically correct "N год/года/лет" for the profession card's
@@ -260,7 +264,7 @@ export class GameEngine {
     room.turnOrder.push(socketId);
 
     // Dynamic bunker capacity update (50% of players)
-    room.bunkerCapacity = Math.max(1, Math.floor(Object.keys(room.players).length / 2));
+    room.bunkerCapacity = Math.max(1, Math.floor(Object.keys(room.players).length * 0.4));
 
     this.addSystemMessage(room, `${newPlayer.name} присоединился к убежищу.`);
 
@@ -408,6 +412,9 @@ export class GameEngine {
     if (Object.keys(room.players).length < 2) return null;
 
     this.stopSpeeches(room);
+    room.lineage = undefined;
+    room.survivalChance = undefined;
+    room.gameFailed = undefined;
 
     const mem = this.getMemory(code);
     mem.games += 1;
@@ -436,8 +443,9 @@ export class GameEngine {
     // Deal Character Cards & Roles
     const playerIds = Object.keys(room.players);
     const n = playerIds.length;
-    const baseCapacity = Math.floor(n / 2);
-    const capacityShift = this.getRandomItem([-1, 0, 0, 0, 1]);
+    // Чем меньше игроков, тем меньше мест: ~40% от числа игроков, у больших компаний иногда +1.
+    const baseCapacity = Math.max(1, Math.floor(n * 0.4));
+    const capacityShift = n >= 6 ? this.getRandomItem([0, 0, 0, 1]) : 0;
     room.bunkerCapacity = n <= 2 ? 1 : clamp(baseCapacity + capacityShift, 1, n - 1);
 
     // Each category deals from its own deck, freshest variants first:
@@ -452,6 +460,8 @@ export class GameEngine {
     const pickBaggage = this.createFreshPicker(BAGGAGES, c => c.title, usedFor('baggage'), game);
     const pickSecret = this.createFreshPicker(SECRET_FACTS, c => c.title, usedFor('secret'), game);
     const pickCondition = this.createFreshPicker(CONDITIONS, c => c.title, usedFor('condition'), game);
+    const pickPhobia = this.createFreshPicker(PHOBIAS, c => c.title, usedFor('phobia'), game);
+    const pickKnowledge = this.createFreshPicker(KNOWLEDGE, c => c.title, usedFor('knowledge'), game);
     const pickActionCard = this.createFreshPicker(ACTION_CARDS, c => c.effect, usedFor('action'), game);
     const takenBio = new Set<string>();
 
@@ -477,6 +487,8 @@ export class GameEngine {
       const baggage = pickBaggage();
       const secret = pickSecret();
       const condition = pickCondition();
+      const phobia = pickPhobia();
+      const knowledge = pickKnowledge();
       const actCard = pickActionCard();
 
       // Стаж и квалификация идут вместе с профессией; уровень хобби и
@@ -496,6 +508,8 @@ export class GameEngine {
         baggage: { id: `baggage-${id}`, type: 'baggage', title: baggage.title, description: baggageDesc, isRevealed: false },
         secret: { id: `secret-${id}`, type: 'secret', title: secret.title, description: secret.desc, isRevealed: false },
         condition: { id: `cond-${id}`, type: 'condition', title: condition.title, description: condition.desc, isRevealed: false },
+        phobia: { id: `phobia-${id}`, type: 'phobia', title: phobia.title, description: phobia.desc, isRevealed: false },
+        knowledge: { id: `know-${id}`, type: 'knowledge', title: knowledge.title, description: knowledge.desc, isRevealed: false },
         actionCard: { id: `act-${id}`, type: 'actionCard', title: actCard.title, description: actCard.desc, isRevealed: false, meta: { effect: actCard.effect } }
       };
 
@@ -701,6 +715,7 @@ export class GameEngine {
     Object.values(room.players).forEach(p => {
       p.revealedThisRound = false;
       p.hasImmunity = false;
+      p.voteWeight = 1;
     });
     room.revealedCountInRound = 0;
   }
@@ -750,7 +765,6 @@ export class GameEngine {
         Object.values(room.players).forEach(p => {
           p.hasVoted = false;
           p.votesCount = 0;
-          p.voteWeight = 1;
         });
         this.addSystemMessage(room, `Фаза голосования! Проголосуйте за игрока, которого вы хотите изгнать из бункера.`);
       }
@@ -758,6 +772,9 @@ export class GameEngine {
       const activePlayers = Object.values(room.players).filter(p => !p.isExiled);
       if (activePlayers.length <= room.bunkerCapacity) {
         room.phase = 'GAME_OVER';
+        const sv = computeSurvival(room);
+        room.survivalChance = sv.chance;
+        room.gameFailed = sv.failed;
         if (this.onGameOver) this.onGameOver(room);
         this.addSystemMessage(room, `Игра завершена! Бункер запечатан. Оставшиеся выжившие отправляются восстанавливать цивилизацию.`);
       } else {
@@ -789,6 +806,32 @@ export class GameEngine {
     }
 
     return room;
+  }
+
+  // ---- «Продолжить род» ----
+  public beginLineage(code: string, socketId: string): RoomState | null {
+    const room = this.rooms[code];
+    if (!room || room.hostId !== socketId || room.lineage) return null;
+    return startLineage(room) ? room : null;
+  }
+
+  public voteLineage(code: string, socketId: string, optionId: string): RoomState | null {
+    const room = this.rooms[code];
+    if (!room || !lineageVote(room, socketId, optionId)) return null;
+    if (allLineageVoted(room)) resolveGeneration(room);
+    return room;
+  }
+
+  public resolveLineage(code: string, socketId: string): RoomState | null {
+    const room = this.rooms[code];
+    if (!room || room.hostId !== socketId) return null;
+    return resolveGeneration(room) ? room : null;
+  }
+
+  public nextLineage(code: string, socketId: string): RoomState | null {
+    const room = this.rooms[code];
+    if (!room || room.hostId !== socketId) return null;
+    return nextGeneration(room) ? room : null;
   }
 
   public castVote(code: string, voterId: string, targetId: string): RoomState | null {
@@ -876,8 +919,13 @@ export class GameEngine {
         break;
       }
       case 'DOUBLE_VOTE': {
-        if (room.phase !== 'VOTING' || player.hasVoted) return null;
+        if (room.phase === 'CARD_REVEAL') return null;
         player.voteWeight = 2;
+        // Если уже проголосовал — добавляем второй голос к своему выбору.
+        if (room.phase === 'VOTING' && player.hasVoted) {
+          const t = room.players[room.votes[player.id]];
+          if (t) t.votesCount = (t.votesCount || 0) + 1;
+        }
         this.addSystemMessage(room, `${player.name} активировал спецкарту «Удвоение голоса» — его голос в этом раунде считается за двоих.`);
         break;
       }

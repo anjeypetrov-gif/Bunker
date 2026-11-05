@@ -362,7 +362,7 @@ export class BotManager {
             this.handlePhaseAutomation(updated, gameEngine, io);
           }
 
-          if (Math.random() < 0.7) {
+          if (Math.random() < 0.7 && room.secretVoting === false) {
             setTimeout(() => {
               const reasonRoom = gameEngine.getRoom(room.code);
               if (!reasonRoom) return;

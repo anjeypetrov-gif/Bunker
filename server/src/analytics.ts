@@ -27,6 +27,8 @@ export interface Ev {
   d?: number;         // длительность партии, сек
   cat?: string;       // катастрофа
   sh?: string;        // бункер
+  sv?: number;        // шанс выживания, %
+  fail?: boolean;     // провальная партия (шанс < 40%)
   ok?: boolean;       // для rtc: связь установлена
 }
 
@@ -159,6 +161,9 @@ function totals(list: Ev[]) {
     withBotsPct: starts.length ? (100 * starts.filter(e => (e.b || 0) > 0).length) / starts.length : 0,
     avgDurationMin: avg(overs.map(e => (e.d || 0) / 60)),
     avgRounds: avg(overs.map(e => e.r || 0)),
+    failedGames: overs.filter(e => e.fail).length,
+    failedPct: overs.length ? (100 * overs.filter(e => e.fail).length) / overs.length : 0,
+    avgSurvival: avg(overs.filter(e => e.sv != null).map(e => e.sv as number)),
     completionPct: starts.length ? Math.min(100, (100 * overs.length) / starts.length) : 0,
     rtcTotal: rtc.length,
     rtcFailPct: rtc.length ? (100 * rtc.filter(e => e.ok === false).length) / rtc.length : 0
