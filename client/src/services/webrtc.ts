@@ -1,4 +1,5 @@
 import { socket } from './socket';
+import { reportRtc } from '../utils/telemetry';
 
 // Опциональный TURN (relay) — задаётся переменными окружения на этапе сборки:
 // VITE_TURN_URL (например turn:turn.example.com:3478), VITE_TURN_USER, VITE_TURN_PASS
@@ -120,6 +121,7 @@ export class WebRTCManager {
       setTimeout(() => this.syncPeers(this.lastSelfId, this.lastRoster), 1500 * n);
     } else {
       this.setState(id, 'failed');
+      reportRtc(false);
     }
   }
 
@@ -171,7 +173,10 @@ export class WebRTCManager {
         console.log(`[WebRTC] ${targetSocketId} ice=${st} conn=${pc.connectionState}`);
         if (this.peerConnections[targetSocketId] !== pc) return;
         this.setState(targetSocketId, st);
-        if (st === 'connected' || st === 'completed') this.retries[targetSocketId] = 0;
+        if (st === 'connected' || st === 'completed') {
+          this.retries[targetSocketId] = 0;
+          if (!(pc as any).__reported) { (pc as any).__reported = true; reportRtc(true); }
+        }
         if (st === 'failed') this.scheduleRetry(targetSocketId, pc);
         if (st === 'disconnected') {
           setTimeout(() => {

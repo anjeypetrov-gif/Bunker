@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import { GameEngine } from '../game/GameEngine';
 import { botManager } from '../game/BotManager';
 import { stats } from '../stats';
+import { track } from '../analytics';
 
 // How long a disconnected player's slot is kept warm before they're
 // actually removed from the room. Covers page refreshes and brief network
@@ -27,6 +28,7 @@ export function registerSocketHandlers(io: Server, gameEngine: GameEngine) {
     socket.on('create_room', ({ name, avatar }, callback) => {
       const { room, sessionToken } = gameEngine.createRoom(socket.id, name, avatar);
       stats.room();
+      track({ k: 'room' });
       socket.join(room.code);
       if (typeof callback === 'function') callback({ success: true, room, sessionToken });
       io.to(room.code).emit('room_updated', room);
@@ -40,6 +42,7 @@ export function registerSocketHandlers(io: Server, gameEngine: GameEngine) {
         return;
       }
       const { room, sessionToken } = result;
+      track({ k: 'join' });
 
       socket.join(room.code);
       if (typeof callback === 'function') callback({ success: true, room, sessionToken });

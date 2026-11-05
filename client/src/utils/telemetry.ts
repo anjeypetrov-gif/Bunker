@@ -25,7 +25,32 @@ export function initTelemetry() {
   try {
     if (!sessionStorage.getItem('bunker:hit')) {
       sessionStorage.setItem('bunker:hit', '1');
-      fetch(`${BASE}/api/hit`, { method: 'POST' }).catch(() => {});
+      // Анонимный id посетителя: случайная строка в localStorage, без cookies и без личных данных.
+      let vid = '', ret = false;
+      try {
+        vid = localStorage.getItem('bunker:vid') || '';
+        if (vid) ret = true;
+        else {
+          vid = Math.random().toString(36).slice(2) + Date.now().toString(36);
+          localStorage.setItem('bunker:vid', vid);
+        }
+      } catch { /* приватный режим — считаем как нового */ }
+      fetch(`${BASE}/api/hit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vid, ret, lang: (navigator.language || '').slice(0, 2), ref: document.referrer || '' })
+      }).catch(() => {});
     }
   } catch { /* приватный режим */ }
+}
+
+// Итог попытки видеосвязи (ok=false — не удалось соединиться): помогает находить проблемы с WebRTC/TURN.
+export function reportRtc(ok: boolean) {
+  try {
+    fetch(`${BASE}/api/rtc`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ok })
+    }).catch(() => {});
+  } catch { /* ignore */ }
 }

@@ -10,6 +10,8 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { stats, DATA_DIR } from './stats';
 import { loadState, saveState } from './persistence';
+import { track, flushEvents, geoLookup, parseUA, hashVisitor, report, Bucket } from './analytics';
+import { adminPageHtml } from './adminPage';
 
 const app = express();
 app.use(cors());
@@ -29,8 +31,22 @@ const io = new Server(server, {
 });
 
 const gameEngine = new GameEngine();
-gameEngine.onGameStart = () => stats.gameStarted();
-gameEngine.onGameOver = () => stats.gameFinished();
+const gameStartedAt = new Map<string, number>();
+gameEngine.onGameStart = (room) => {
+  stats.gameStarted();
+  const players = Object.values(room.players);
+  gameStartedAt.set(room.code, Date.now());
+  track({
+    k: 'start', n: players.length, b: players.filter(p => p.id.startsWith('bot-')).length,
+    cat: room.catastrophe?.title, sh: room.shelter?.title
+  });
+};
+gameEngine.onGameOver = (room) => {
+  stats.gameFinished();
+  const t0 = gameStartedAt.get(room.code);
+  gameStartedAt.delete(room.code);
+  track({ k: 'over', r: room.currentRound, d: t0 ? Math.round((Date.now() - t0) / 1000) : undefined });
+};
 registerSocketHandlers(io, gameEngine);
 
 // ---- Восстановление комнат после перезапуска ----
@@ -47,7 +63,7 @@ if (restored > 0) {
 }
 setInterval(() => saveState(gameEngine), 5000);
 setInterval(() => { stats.players(io.engine.clientsCount); stats.save(); }, 10000);
-const shutdown = () => { saveState(gameEngine); stats.save(); process.exit(0); };
+const shutdown = () => { saveState(gameEngine); stats.save(); flushEvents(); process.exit(0); };
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
@@ -71,6 +87,7 @@ app.post('/api/client-error', (req, res) => {
   };
   recentErrors.unshift(entry); if (recentErrors.length > 200) recentErrors.pop();
   stats.error();
+  track({ k: 'error' });
   console.warn('[ClientError]', entry.msg, '|', entry.url);
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -81,7 +98,39 @@ app.post('/api/client-error', (req, res) => {
   res.status(204).end();
 });
 
-app.post('/api/hit', (_req, res) => { stats.visit(); res.status(204).end(); });
+const clientIp = (req: express.Request) =>
+  String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+
+app.post('/api/hit', (req, res) => {
+  stats.visit();
+  const b = req.body || {};
+  const ua = parseUA(String(req.headers['user-agent'] || ''));
+  const geo = geoLookup(clientIp(req));
+  let ref = '';
+  try { ref = b.ref ? new URL(String(b.ref)).hostname.replace(/^www\./, '') : ''; } catch { /* мусор */ }
+  if (ref === String(req.headers.host || '').split(':')[0]) ref = '';
+  track({
+    k: 'visit',
+    vid: b.vid ? hashVisitor(clip(b.vid, 64)) : undefined,
+    ret: b.ret === true,
+    c: geo.c, city: geo.city, ...ua,
+    lang: clip(b.lang, 5).toLowerCase() || undefined,
+    ref: ref || undefined
+  });
+  res.status(204).end();
+});
+
+// Итог попытки видеосвязи с другим игроком (ok=false — не удалось соединиться)
+app.post('/api/rtc', (req, res) => {
+  const ip = clientIp(req);
+  const now = Date.now();
+  const h = errHits.get('rtc:' + ip) || { n: 0, reset: now + 60000 };
+  if (now > h.reset) { h.n = 0; h.reset = now + 60000; }
+  h.n += 1; errHits.set('rtc:' + ip, h);
+  if (h.n > 30) return res.status(429).end();
+  track({ k: 'rtc', ok: req.body?.ok === true });
+  res.status(204).end();
+});
 
 const adminOk = (req: express.Request): boolean => {
   const token = process.env.ADMIN_TOKEN;
@@ -92,25 +141,39 @@ const adminOk = (req: express.Request): boolean => {
 };
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 
-// Панель администратора: /api/admin?token=<ADMIN_TOKEN> (если ADMIN_TOKEN не задан — страница недоступна)
+// Панель администратора: /admin?token=<ADMIN_TOKEN> (если ADMIN_TOKEN не задан — страница недоступна)
 app.get(['/api/admin', '/admin'], (req, res) => {
   if (!adminOk(req)) return res.status(404).send('Not found');
+  res.type('html').send(adminPageHtml());
+});
+
+app.get('/api/admin/report', (req, res) => {
+  if (!adminOk(req)) return res.status(404).end();
+  const now = Date.now();
+  const to = Math.min(now, Number(req.query.to) || now);
+  const from = Math.max(0, Number(req.query.from) || to - 7 * 86400000);
+  const bucket = (['hour', 'day', 'week', 'month'].includes(String(req.query.bucket)) ? req.query.bucket : 'auto') as Bucket | 'auto';
+  const tz = Math.max(-840, Math.min(840, Number(req.query.tz) || 0));
+  res.json(report(from, to, bucket, tz));
+});
+
+app.get('/api/admin/live', (req, res) => {
+  if (!adminOk(req)) return res.status(404).end();
+  const roomsMap = gameEngine.exportState().rooms as Record<string, any>;
+  const rooms = Object.values(roomsMap).map((r: any) => {
+    const ps = Object.values(r.players || {}) as any[];
+    return {
+      code: r.code, phase: r.phase, round: r.currentRound,
+      humans: ps.filter(p => !String(p.id).startsWith('bot-')).length,
+      bots: ps.filter(p => String(p.id).startsWith('bot-')).length,
+      offline: ps.filter(p => p.isConnected === false).length
+    };
+  });
   const s = stats.get();
-  const days = Object.keys(s.days).sort().reverse().slice(0, 14);
-  const online = io.engine.clientsCount;
-  const rooms = gameEngine.exportState().rooms;
-  res.send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Бункер — админка</title>
-<style>body{font:14px system-ui;background:#0b0e14;color:#e2e8f0;margin:20px;max-width:900px}h1,h2{color:#fbbf24}
-table{border-collapse:collapse;width:100%}td,th{border:1px solid #334155;padding:6px 8px;text-align:right}th:first-child,td:first-child{text-align:left}
-pre{background:#111827;padding:8px;overflow:auto;white-space:pre-wrap}.k{color:#94a3b8}</style>
-<h1>Бункер: статистика</h1>
-<p class="k">С ${esc(s.since)} · онлайн сейчас: <b>${online}</b> · комнат: <b>${Object.keys(rooms).length}</b> · пик подключений: <b>${s.peakPlayers}</b></p>
-<table><tr><th>Дата</th><th>Заходы</th><th>Комнаты</th><th>Игры начаты</th><th>Игры завершены</th><th>Ошибки</th></tr>
-<tr><th>Всего</th><td>${s.total.visits}</td><td>${s.total.rooms}</td><td>${s.total.gamesStarted}</td><td>${s.total.gamesFinished}</td><td>${s.total.errors}</td></tr>
-${days.map(d => `<tr><td>${d}</td><td>${s.days[d].visits}</td><td>${s.days[d].rooms}</td><td>${s.days[d].gamesStarted}</td><td>${s.days[d].gamesFinished}</td><td>${s.days[d].errors}</td></tr>`).join('')}</table>
-<h2>Последние ошибки клиентов (${recentErrors.length})</h2>
-${recentErrors.slice(0, 30).map(e => `<pre><b>${esc(e.t)}</b> ${esc(e.msg)}\n${esc(e.url || '')}\n${esc(e.ua || '')}\n${esc(e.stack || '')}</pre>`).join('') || '<p class="k">Пока ошибок нет.</p>'}`);
+  res.json({
+    online: io.engine.clientsCount, rooms, peak: s.peakPlayers, since: s.since,
+    errors: recentErrors.slice(0, 40)
+  });
 });
 
 // Политика конфиденциальности (нужна магазинам приложений). Дублируем под /api/, потому что
