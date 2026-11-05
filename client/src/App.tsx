@@ -274,6 +274,7 @@ export const App: React.FC = () => {
           room={room}
           currentSocketId={currentSocketId}
           onRestart={handleRestart}
+          onLeave={handleLeaveGame}
           onStartLineage={() => lineageEmit('start_lineage')}
           onLineageVote={(optionId) => lineageEmit('lineage_vote', { optionId })}
           onLineageResolve={() => lineageEmit('lineage_resolve')}

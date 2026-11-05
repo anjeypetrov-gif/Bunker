@@ -8,6 +8,7 @@ interface GameOverProps {
   room: RoomState;
   currentSocketId: string;
   onRestart: () => void;
+  onLeave: () => void;
   onStartLineage: () => void;
   onLineageVote: (optionId: string) => void;
   onLineageResolve: () => void;
@@ -18,6 +19,7 @@ export const GameOver: React.FC<GameOverProps> = ({
   room,
   currentSocketId,
   onRestart,
+  onLeave,
   onStartLineage,
   onLineageVote,
   onLineageResolve,
@@ -240,16 +242,22 @@ export const GameOver: React.FC<GameOverProps> = ({
         </button>
       </div>
 
-      {isHost && (
-        <div className="pt-4 text-center">
+      <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+        {isHost && (
           <button
             onClick={onRestart}
             className="py-4 px-8 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold notch shadow-lg shadow-amber-500/30 inline-flex items-center gap-3 uppercase tracking-wider text-sm transition-all cursor-pointer"
           >
             <RefreshCw className="w-5 h-5" /> СЫГРАТЬ ЕЩЕ РАЗ
           </button>
-        </div>
-      )}
+        )}
+        <button
+          onClick={() => { if (window.confirm('Выйти из комнаты?')) onLeave(); }}
+          className="py-4 px-8 border border-slate-600 bg-slate-900 hover:bg-slate-800 text-slate-200 font-bold notch inline-flex items-center gap-3 uppercase tracking-wider text-sm transition-all cursor-pointer"
+        >
+          ВЫЙТИ
+        </button>
+      </div>
     </div>
   );
 };
