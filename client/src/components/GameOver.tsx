@@ -77,6 +77,26 @@ export const GameOver: React.FC<GameOverProps> = ({
     if (infected?.achieved) sfx.alarm();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alarmKey]);
+  const [revealAll, setRevealAll] = React.useState(false);
+  const LABELS: Record<string, string> = {
+    profession: 'Профессия', health: 'Здоровье', biology: 'Биология', hobby: 'Хобби', trait: 'Характер',
+    baggage: 'Багаж', secret: 'Секрет', condition: 'Условие', phobia: 'Фобия', knowledge: 'Знание', actionCard: 'Спецкарта'
+  };
+  const fullDossier = (p: typeof survivors[number]) => (
+    <div className="mt-2 pt-2 border-t border-slate-800 space-y-1">
+      {p.role && <div className="text-slate-400">Тайная роль: <span className="text-red-300 font-semibold">{p.role.title}</span></div>}
+      {Object.entries(LABELS).map(([k, label]) => {
+        const c = (p.cards as any)[k];
+        if (!c) return null;
+        return (
+          <div key={k} className="text-slate-400">
+            {label}: <span className="text-slate-100">{c.title}</span>
+            {c.description && <span className="text-slate-500"> — {c.description}</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
   const [shared, setShared] = React.useState(false);
   const share = async () => {
     try {
@@ -143,6 +163,15 @@ export const GameOver: React.FC<GameOverProps> = ({
         </div>
       </div>
 
+      <div className="text-center">
+        <button
+          onClick={() => setRevealAll(v => !v)}
+          className="py-2.5 px-5 border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-bold notch-sm text-xs uppercase tracking-wider cursor-pointer"
+        >
+          {revealAll ? 'Скрыть карты' : 'Вскрыть все карты'}
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Survivors inside */}
         <div className="bg-emerald-950/20 border border-emerald-900/40 p-4 notch-sm space-y-3">
@@ -159,6 +188,7 @@ export const GameOver: React.FC<GameOverProps> = ({
                 <div className="text-slate-400">Профессия: <span className="text-amber-300 font-semibold">{p.cards.profession?.title}</span></div>
                 <div className="text-slate-400">Здоровье: <span className="text-slate-200">{p.cards.health?.title}</span></div>
                 <div className="text-slate-400">Багаж: <span className="text-amber-200">{p.cards.baggage?.title}</span></div>
+                {revealAll && fullDossier(p)}
               </div>
             ))}
           </div>
@@ -178,6 +208,7 @@ export const GameOver: React.FC<GameOverProps> = ({
                 </div>
                 <div className="text-slate-400">Профессия: <span className="text-slate-300">{p.cards.profession?.title}</span></div>
                 <div className="text-slate-400">Здоровье: <span className="text-slate-300">{p.cards.health?.title}</span></div>
+                {revealAll && fullDossier(p)}
               </div>
             ))}
           </div>
