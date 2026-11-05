@@ -1,4 +1,4 @@
-import { computeSurvival } from './survival';
+import { computeSurvival, computeRoleResults } from './survival';
 import { startLineage, lineageVote, allLineageVoted, resolveGeneration, nextGeneration } from './lineage';
 import { randomUUID } from 'crypto';
 import {
@@ -413,6 +413,7 @@ export class GameEngine {
 
     this.stopSpeeches(room);
     room.lineage = undefined;
+    room.roleResults = undefined;
     room.survivalChance = undefined;
     room.gameFailed = undefined;
 
@@ -775,6 +776,14 @@ export class GameEngine {
         const sv = computeSurvival(room);
         room.survivalChance = sv.chance;
         room.gameFailed = sv.failed;
+        room.roleResults = computeRoleResults(room);
+        for (const rr of room.roleResults) {
+          if (rr.roleTitle === 'Тайный Зараженный') {
+            this.addSystemMessage(room, rr.achieved
+              ? `ТРЕВОГА! Среди выживших был ${rr.playerName}: Тайный Зараженный пробрался в бункер и выполнил свою цель.`
+              : `${rr.playerName} был Тайным Зараженным, но не попал в бункер.`);
+          }
+        }
         if (this.onGameOver) this.onGameOver(room);
         this.addSystemMessage(room, `Игра завершена! Бункер запечатан. Оставшиеся выжившие отправляются восстанавливать цивилизацию.`);
       } else {

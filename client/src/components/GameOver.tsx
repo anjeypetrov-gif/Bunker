@@ -2,6 +2,7 @@ import React from 'react';
 import { Trophy, Skull, Home, RefreshCw } from './icons';
 import { RoomState } from '../types/game';
 import { LineagePanel } from './LineagePanel';
+import { sfx } from '../utils/sfx';
 
 interface GameOverProps {
   room: RoomState;
@@ -69,6 +70,13 @@ export const GameOver: React.FC<GameOverProps> = ({
       : `Бункер заперт, но внутри не хватало слишком многого${missing.length ? `: ${missing.join(', ')}` : ''}. Хроника прервалась на третьей зиме. Возможно, голосование было слишком поспешным.`;
 
   const shareText = `БУНКЕР — итог партии\n${verdict}: шанс на возрождение ${survivalChance}%${failed ? ' (ПРОВАЛ)' : ''}\nВыжили: ${survivors.map(p => p.name).join(', ')}\nИзгнаны: ${exiled.map(p => p.name).join(', ') || 'никто'}\nИграть: ${window.location.origin}`;
+  const roleResults = room.roleResults || [];
+  const infected = roleResults.find(r => r.roleTitle === 'Тайный Зараженный');
+  const alarmKey = `${room.code}:${infected?.playerId || ''}:${infected?.achieved ? 1 : 0}`;
+  React.useEffect(() => {
+    if (infected?.achieved) sfx.alarm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alarmKey]);
   const [shared, setShared] = React.useState(false);
   const share = async () => {
     try {
@@ -94,6 +102,28 @@ export const GameOver: React.FC<GameOverProps> = ({
           Двери закрыты. Группа изоляции готова к выживанию в течение {room.catastrophe?.durationYears || 10} лет.
         </p>
       </div>
+
+      {infected?.achieved && (
+        <div className="p-4 notch border-2 border-red-500 bg-red-950/50 text-center animate-pulse">
+          <div className="text-xl font-black text-red-400 uppercase tracking-widest font-display">⚠ ТРЕВОГА: В БУНКЕРЕ ЗАРАЖЁННЫЙ</div>
+          <p className="text-sm text-red-200 mt-1">Тайный зараженный пробрался внутрь и выиграл свою партию.</p>
+        </div>
+      )}
+
+      {roleResults.length > 0 && (
+        <div className="bg-slate-950 p-4 notch border border-slate-800 space-y-2">
+          <div className="text-xs font-mono text-slate-400 uppercase tracking-widest text-center">ТАЙНЫЕ ЦЕЛИ ИГРОКОВ</div>
+          {roleResults.map(r => (
+            <div key={r.playerId} className={`p-2.5 border notch-sm text-xs flex items-start justify-between gap-3 ${r.achieved ? 'border-emerald-500/40 bg-emerald-950/20' : 'border-slate-800 bg-slate-900'}`}>
+              <div>
+                <div className="font-bold text-slate-100 text-sm">{r.playerName} · <span className="text-amber-300">{r.roleTitle}</span></div>
+                <div className="text-slate-400">{r.goal}</div>
+              </div>
+              <span className={`font-mono font-bold whitespace-nowrap ${r.achieved ? 'text-emerald-400' : 'text-red-400'}`}>{r.achieved ? 'ЦЕЛЬ ВЫПОЛНЕНА' : 'ПРОВАЛ'}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Survival Rating Card */}
       <div className="bg-slate-950 p-6 notch border border-slate-800 text-center space-y-3">

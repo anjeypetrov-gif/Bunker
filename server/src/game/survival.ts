@@ -1,4 +1,4 @@
-import type { RoomState } from '../types/game';
+import type { RoleResult, RoomState } from '../types/game';
 
 /** Порог: ниже этого шанса партия считается проваленной. */
 export const FAIL_THRESHOLD = 40;
@@ -32,4 +32,28 @@ export function computeSurvival(room: RoomState) {
   chance = Math.min(97, Math.max(8, chance));
 
   return { chance, failed: chance < FAIL_THRESHOLD };
+}
+
+/** Выполнили ли игроки цели своих тайных ролей (только роли с однозначным критерием). */
+export function computeRoleResults(room: RoomState): RoleResult[] {
+  const all = Object.values(room.players);
+  const survivors = all.filter(p => !p.isExiled);
+  const low = (s?: string) => (s || '').toLowerCase();
+  const anyProf = (words: string[]) => survivors.some(p => words.some(w => low(p.cards.profession?.title).includes(w)));
+  const out: RoleResult[] = [];
+  for (const p of all) {
+    const r = p.role;
+    if (!r) continue;
+    const alive = !p.isExiled;
+    let achieved: boolean | null = null;
+    switch (r.id) {
+      case 'role-1': case 'role-2': case 'role-8': case 'role-11': achieved = alive; break;
+      case 'role-3': achieved = alive && anyProf(['врач', 'хирург', 'медсестр', 'стоматолог', 'инфекцион']); break;
+      case 'role-4': achieved = alive && anyProf(['инженер', 'механик', 'электрик', 'сантехник']); break;
+      default: achieved = null;
+    }
+    if (achieved === null) continue;
+    out.push({ playerId: p.id, playerName: p.name, roleTitle: r.title, goal: r.goal, survived: alive, achieved });
+  }
+  return out;
 }

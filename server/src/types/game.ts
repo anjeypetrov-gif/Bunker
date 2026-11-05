@@ -123,6 +123,7 @@ export interface RoomState {
   secretVoting: boolean;
   // true — никто не видит, кто за кого проголосовал
   survivalChance?: number;
+  roleResults?: RoleResult[];
   gameFailed?: boolean;   // шанс выживания < 40% — партия провалена
   lineageEnabled: boolean; // после финала — игра «Продолжить род» для прошедших в бункер
   lineage?: LineageState;
@@ -154,3 +155,12 @@ export interface LineageState {
   survivorIds: string[];
 }
 
+// Итоги тайных ролей (считаются в конце партии)
+export interface RoleResult {
+  playerId: string;
+  playerName: string;
+  roleTitle: string;
+  goal: string;
+  survived: boolean;
+  achieved: boolean;
+}

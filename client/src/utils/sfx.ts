@@ -48,12 +48,22 @@ export const sfx = {
     tone(110, 2.6, 'sine', 0.22); tone(220, 2.2, 'sine', 0.1); tone(330, 1.6, 'triangle', 0.05);
     sfx.vibrate([500]);
   },
+  /** Сирена: тайный игрок прошёл в бункер. */
+  alarm() {
+    for (let i = 0; i < 3; i++) {
+      setTimeout(() => { tone(880, 0.28, 'sawtooth', 0.12); setTimeout(() => tone(620, 0.28, 'sawtooth', 0.12), 300); }, i * 650);
+    }
+    sfx.vibrate([200, 100, 200, 100, 400]);
+  },
   /** Раскрытие очередного голоса. */
   vote() { tone(300, 0.16, 'triangle', 0.1); },
   vibrate(pattern: number | number[]) {
     try { if (on && navigator.vibrate) navigator.vibrate(pattern); } catch { /* ignore */ }
   },
   startAmbient() {
+    // Фоновый гул бункера отключён по отзывам игроков; звуковые эффекты остаются.
+    return;
+    // eslint-disable-next-line no-unreachable
     if (!on || ambient) return;
     const c = getCtx(); if (!c) return;
     const master = c.createGain(); master.gain.value = 0.0001;
