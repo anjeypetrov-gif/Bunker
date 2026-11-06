@@ -253,7 +253,7 @@ export const Proto3D: React.FC = () => {
     let drag: { x: number; y: number; id: number } | null = null;
     const dom = renderer.domElement;
     dom.style.touchAction = 'none';
-    const pd = (e: PointerEvent) => { drag = { x: e.clientX, y: e.clientY, id: e.pointerId }; dom.setPointerCapture(e.pointerId); };
+    const pd = (e: PointerEvent) => { e.preventDefault(); drag = { x: e.clientX, y: e.clientY, id: e.pointerId }; dom.setPointerCapture(e.pointerId); };
     const pm = (e: PointerEvent) => {
       if (!drag || drag.id !== e.pointerId) return;
       cam.yaw -= (e.clientX - drag.x) * 0.008;
@@ -267,13 +267,21 @@ export const Proto3D: React.FC = () => {
     dom.addEventListener('pointerup', pu);
     dom.addEventListener('pointercancel', pu);
     dom.addEventListener('wheel', wh, { passive: false });
+    const cm = (e: Event) => e.preventDefault();
+    dom.addEventListener('contextmenu', cm);
     dom.style.cursor = 'grab';
     const keys: Record<string, boolean> = {};
     const onKey = (e: KeyboardEvent, v: boolean) => {
       keys[e.code] = v;
       if (e.code === 'KeyE') holdRef.current = v;
     };
-    const kd = (e: KeyboardEvent) => onKey(e, true);
+    const kd = (e: KeyboardEvent) => {
+      if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
+      onKey(e, true);
+    };
+    const blur = () => { for (const k of Object.keys(keys)) keys[k] = false; holdRef.current = false; drag = null; };
+    window.addEventListener('blur', blur);
+    document.addEventListener('contextmenu', cm);
     const ku = (e: KeyboardEvent) => onKey(e, false);
     window.addEventListener('keydown', kd);
     window.addEventListener('keyup', ku);
@@ -455,6 +463,9 @@ export const Proto3D: React.FC = () => {
       dom.removeEventListener('pointerup', pu);
       dom.removeEventListener('pointercancel', pu);
       dom.removeEventListener('wheel', wh);
+      dom.removeEventListener('contextmenu', cm);
+      window.removeEventListener('blur', blur);
+      document.removeEventListener('contextmenu', cm);
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
@@ -478,7 +489,12 @@ export const Proto3D: React.FC = () => {
   const pct = Math.round(hud.flood);
 
   return (
-    <div className="fixed inset-0 bg-[#07090d] text-slate-100 font-mono select-none touch-none overflow-hidden">
+    <div
+      className="fixed inset-0 bg-[#07090d] text-slate-100 font-mono select-none touch-none overflow-hidden"
+      style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
+      onContextMenu={e => e.preventDefault()}
+      onDragStart={e => e.preventDefault()}
+    >
       <div ref={mountRef} className="absolute inset-0" />
 
       {/* Верхняя панель */}
