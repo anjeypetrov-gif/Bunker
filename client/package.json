@@ -9,19 +9,23 @@
     "preview": "node node_modules/vite/bin/vite.js preview"
   },
   "dependencies": {
-    "clsx": "^2.1.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "socket.io-client": "^4.7.5",
-    "tailwind-merge": "^2.3.0",
     "@types/node": "^20.12.12",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.19",
+    "clsx": "^2.1.1",
     "postcss": "^8.4.38",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "socket.io-client": "^4.7.5",
+    "tailwind-merge": "^2.3.0",
     "tailwindcss": "^3.4.3",
+    "three": "^0.169.0",
     "typescript": "^5.4.5",
     "vite": "^5.2.11"
+  },
+  "devDependencies": {
+    "@types/three": "^0.169.0"
   }
 }
