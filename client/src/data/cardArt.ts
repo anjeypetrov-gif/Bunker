@@ -326,6 +326,88 @@ const EXTRA: Partial<Record<CardType, Record<string, string>>> = {
   },
 };
 
+
+// Собственные иллюстрации (Gemini), приоритетнее заимствованных.
+const OWN: Partial<Record<CardType, Record<string, string>>> = {
+  hobby: {
+    'Изучение истории': 'g-hobby-izuchenie-istorii.jpg',
+    'Пчеловодство': 'g-hobby-pchelovodstvo.jpg',
+    'Скалолазание': 'g-hobby-skalolazanie.jpg',
+    'Иностранные языки': 'g-hobby-inostrannye-yazyki.jpg',
+    'Картография и ориентирование': 'g-hobby-kartografiya-i-orientirovanie.jpg',
+    'Вязание и плетение': 'g-hobby-vyazanie-i-pletenie.jpg',
+    'Йога и медитация': 'g-hobby-yoga-i-meditatsiya.jpg',
+    'Кулинария и консервация': 'g-knowledge-zapasy-na-zimu.jpg',
+  },
+  profession: {
+    'Антиквар': 'g-profession-antikvar.jpg',
+    'Пекарь-кондитер': 'g-profession-pekar-konditer.jpg',
+    'Частный детектив': 'g-profession-chastnyy-detektiv.jpg',
+    'Механик-дизелист': 'g-profession-mekhanik-dizelist.jpg',
+    'Биотехнолог-селекционер': 'g-profession-biotekhnolog-selektsioner.jpg',
+    'Биохимик': 'g-profession-biokhimik.jpg',
+    'Хакер': 'g-profession-khaker.jpg',
+    'Медсестра-реаниматолог': 'g-profession-medsestra-reanimatolog.jpg',
+    'Оператор дронов': 'g-profession-operator-dronov.jpg',
+    'Юрист-арбитр': 'g-profession-yurist-arbitr.jpg',
+    'Ботаник': 'g-profession-botanik.jpg',
+  },
+  baggage: {
+    'Запас противовирусных препаратов': 'g-baggage-zapas-protivovirusnykh-preparatov.jpg',
+    'Настольные игры и карты': 'g-baggage-nastolnye-igry-i-karty.jpg',
+    'Компас и карта местности': 'g-baggage-kompas-i-karta-mestnosti.jpg',
+    'Набор для первой помощи': 'g-baggage-nabor-dlya-pervoy-pomoshchi.jpg',
+    'Расширенная аптечка': 'g-baggage-nabor-dlya-pervoy-pomoshchi.jpg',
+    'Топор и мультитул': 'g-baggage-topor-i-multitul.jpg',
+    'Ручной насос-фильтр для воды': 'g-baggage-ruchnoy-nasos-filtr-dlya-vody.jpg',
+    'Лопата': 'g-baggage-lopata.jpg',
+    'Портативный фильтр для воды': 'g-baggage-portativnyy-filtr-dlya-vody.jpg',
+  },
+  condition: {
+    'Антибиотики': 'g-baggage-zapas-protivovirusnykh-preparatov.jpg',
+    'Чистый бункер': 'g-condition-chistyy-bunker.jpg',
+    'Хороший рассказчик': 'g-condition-khoroshiy-rasskazchik.jpg',
+    'Копия действия': 'g-condition-kopiya-deystviya.jpg',
+    'Есть контакт снаружи': 'g-condition-est-kontakt-snaruzhi.jpg',
+    'Быстро восстанавливается': 'g-condition-bystro-vosstanavlivaetsya.jpg',
+  },
+  phobia: {
+    'Гемофобия': 'g-phobia-gemofobiya.jpg',
+    'Офидиофобия': 'g-phobia-ofidiofobiya.jpg',
+    'Акрофобия': 'g-phobia-akrofobiya.jpg',
+    'Кинофобия': 'g-phobia-kinofobiya.jpg',
+    'Мизофобия': 'g-phobia-mizofobiya.jpg',
+    'Тетрафобия': 'g-phobia-tetrafobiya.jpg',
+  },
+  knowledge: {
+    'Поиск воды в пустыне': 'g-knowledge-poisk-vody-v-pustyne.jpg',
+    'Ориентирование': 'g-baggage-kompas-i-karta-mestnosti.jpg',
+    'Очистка воды': 'g-knowledge-ochistka-vody.jpg',
+    'Укрытие из подручного': 'g-knowledge-ukrytie-iz-podruchnogo.jpg',
+    'Народная медицина': 'g-knowledge-narodnaya-meditsina.jpg',
+    'Запасы на зиму': 'g-knowledge-zapasy-na-zimu.jpg',
+    'Ловушки и рыбалка': 'g-knowledge-lovushki-i-rybalka.jpg',
+  },
+  secret: {
+    'Прячет запас шоколада': 'g-secret-pryachet-zapas-shokolada.jpg',
+    'Знает шифр от склада': 'g-secret-znaet-shifr-ot-sklada.jpg',
+    'Тайно носит нож': 'g-secret-tayno-nosit-nozh.jpg',
+    'Умеет лечить травами': 'g-knowledge-narodnaya-meditsina.jpg',
+    'Работал на разведку': 'g-secret-rabotal-na-razvedku.jpg',
+  },
+  health: {
+    'Слабое сердце': 'g-health-slaboe-serdtse.jpg',
+    'Эпилепсия': 'g-health-epilepsiya.jpg',
+    'Мигрени': 'g-health-epilepsiya.jpg',
+    'Непереносимость глютена': 'g-health-neperenosimost-glyutena.jpg',
+  },
+  trait: {
+    'Мечтатель': 'g-trait-mechtatel.jpg',
+    'Импульсивный': 'g-trait-impulsivnyy.jpg',
+    'Практичный': 'g-trait-praktichnyy.jpg',
+  },
+};
+
 /** Returns the /cards/... URL for a card's art, or null if none is mapped. */
 export function getCardArt(type: CardType, title: string): string | null {
   if (type === 'biology') {
@@ -342,6 +424,6 @@ export function getCardArt(type: CardType, title: string): string | null {
     return best ? BASE + best.file : null;
   }
   const table = BY_TYPE[type];
-  const file = (table ? table[title] : undefined) ?? SIMILAR[type]?.[title] ?? EXTRA[type]?.[title];
+  const file = OWN[type]?.[title] ?? (table ? table[title] : undefined) ?? SIMILAR[type]?.[title] ?? EXTRA[type]?.[title];
   return file ? BASE + file : null;
 }
