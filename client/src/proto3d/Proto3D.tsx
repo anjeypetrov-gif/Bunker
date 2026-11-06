@@ -54,6 +54,7 @@ export const Proto3D: React.FC = () => {
     scene.fog = new THREE.Fog(0x07090d, 14, 30);
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 60);
     let camScale = 1;
+    const cam = { yaw: 0, pitch: 0.95, dist: 11 };
 
     const resize = () => {
       const w = mount.clientWidth, h = mount.clientHeight;
@@ -168,21 +169,74 @@ export const Proto3D: React.FC = () => {
     scene.add(standMark);
 
     // ---------- Персонажи ----------
-    const makePerson = (color: number) => {
+    interface Human {
+      group: THREE.Group; legL: THREE.Group; legR: THREE.Group; armL: THREE.Group; armR: THREE.Group;
+      wrench: THREE.Mesh; phase: number;
+    }
+    const makeHuman = (shirt: number, pants: number, hair: number, skin = 0xd9b89a): Human => {
       const g = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 1.0, 14), mat(color, 0.6, 0.1));
-      body.position.y = 0.7;
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 12), mat(0xd9b89a, 0.7));
-      head.position.y = 1.5;
-      g.add(body, head);
+      const m = (c: number, r = 0.75) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0.05 });
+      const add = (parent: THREE.Object3D, geo: THREE.BufferGeometry, mt: THREE.Material, x: number, y: number, z: number) => {
+        const me = new THREE.Mesh(geo, mt); me.position.set(x, y, z); parent.add(me); return me;
+      };
+      // Торс, таз, шея, голова, волосы
+      add(g, new THREE.BoxGeometry(0.62, 0.72, 0.34), m(shirt), 0, 1.38, 0);
+      add(g, new THREE.BoxGeometry(0.58, 0.22, 0.32), m(pants), 0, 0.93, 0);
+      add(g, new THREE.CylinderGeometry(0.09, 0.1, 0.12, 8), m(skin), 0, 1.8, 0);
+      add(g, new THREE.SphereGeometry(0.24, 18, 14), m(skin), 0, 2.0, 0);
+      const hairM = add(g, new THREE.SphereGeometry(0.26, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.55), m(hair, 0.9), 0, 2.03, -0.02);
+      hairM.rotation.x = -0.15;
+      // Нос — чтобы было видно, куда смотрит
+      add(g, new THREE.BoxGeometry(0.06, 0.08, 0.08), m(skin), 0, 1.98, 0.24);
+      // Ноги (пивот в бедре)
+      const mkLeg = (x: number) => {
+        const pv = new THREE.Group(); pv.position.set(x, 0.88, 0); g.add(pv);
+        add(pv, new THREE.BoxGeometry(0.24, 0.48, 0.26), m(pants), 0, -0.24, 0);
+        add(pv, new THREE.BoxGeometry(0.22, 0.4, 0.24), m(pants), 0, -0.64, 0);
+        add(pv, new THREE.BoxGeometry(0.24, 0.12, 0.38), m(0x20242b), 0, -0.86, 0.06);
+        return pv;
+      };
+      const legL = mkLeg(-0.16), legR = mkLeg(0.16);
+      // Руки (пивот в плече)
+      const mkArm = (x: number) => {
+        const pv = new THREE.Group(); pv.position.set(x, 1.68, 0); g.add(pv);
+        add(pv, new THREE.BoxGeometry(0.17, 0.42, 0.2), m(shirt), 0, -0.2, 0);
+        add(pv, new THREE.BoxGeometry(0.15, 0.4, 0.17), m(skin), 0, -0.58, 0);
+        return pv;
+      };
+      const armL = mkArm(-0.4), armR = mkArm(0.4);
+      // Гаечный ключ в правой руке (виден только у игрока с инструментом)
+      const wrench = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.5, 0.07), new THREE.MeshStandardMaterial({ color: 0xaab2bd, metalness: 0.8, roughness: 0.3 }));
+      wrench.position.set(0, -0.85, 0.12);
+      wrench.visible = false;
+      armR.add(wrench);
       scene.add(g);
-      return g;
+      return { group: g, legL, legR, armL, armR, wrench, phase: Math.random() * 6 };
     };
-    const player = makePerson(0xe8a33d);
+    const animate = (h: Human, speed: number, t: number, working = false) => {
+      if (working) {
+        h.armR.rotation.x = -1.3 + Math.sin(t * 12) * 0.35;
+        h.armL.rotation.x = -0.9 + Math.sin(t * 12 + 1) * 0.15;
+        h.legL.rotation.x = h.legR.rotation.x = 0;
+        return;
+      }
+      h.phase += speed * 2.6;
+      const sw = Math.sin(h.phase) * Math.min(1, speed * 14) * 0.7;
+      h.legL.rotation.x = sw; h.legR.rotation.x = -sw;
+      h.armL.rotation.x = -sw * 0.8; h.armR.rotation.x = sw * 0.8;
+      h.group.position.y = Math.abs(Math.sin(h.phase)) * Math.min(1, speed * 14) * 0.06;
+    };
+    const playerH = makeHuman(0xe8a33d, 0x30363f, 0x3a2a1c);
+    const player = playerH.group;
     player.position.set(0, 0, 2);
-    const npcs = [makePerson(0x5a8ab0), makePerson(0x7a9a6a)];
-    npcs[0].position.set(-2.5, 0, -1.2);
-    npcs[1].position.set(2.2, 0, 0.8);
+    const npcH = [
+      makeHuman(0x4d78a6, 0x2b2f36, 0xc9b27a, 0xc99c7c),
+      makeHuman(0x6f8f5e, 0x3a3326, 0x1b1b1b, 0xe2c2a2)
+    ];
+    const npcHome = [new THREE.Vector3(-2.5, 0, -1.2), new THREE.Vector3(2.4, 0, 1)];
+    npcH[0].group.position.copy(npcHome[0]);
+    npcH[1].group.position.copy(npcHome[1]);
+    const npcPrev = npcH.map(n => n.group.position.clone());
 
     // ---------- Состояние ----------
     const S = {
@@ -195,6 +249,25 @@ export const Proto3D: React.FC = () => {
       msg: 'Осмотрись в отсеке',
       time: 0
     };
+    // Вращение камеры: перетаскивание мышью/пальцем, колёсико — масштаб
+    let drag: { x: number; y: number; id: number } | null = null;
+    const dom = renderer.domElement;
+    dom.style.touchAction = 'none';
+    const pd = (e: PointerEvent) => { drag = { x: e.clientX, y: e.clientY, id: e.pointerId }; dom.setPointerCapture(e.pointerId); };
+    const pm = (e: PointerEvent) => {
+      if (!drag || drag.id !== e.pointerId) return;
+      cam.yaw -= (e.clientX - drag.x) * 0.008;
+      cam.pitch = Math.max(0.35, Math.min(1.4, cam.pitch + (e.clientY - drag.y) * 0.006));
+      drag.x = e.clientX; drag.y = e.clientY;
+    };
+    const pu = () => { drag = null; };
+    const wh = (e: WheelEvent) => { e.preventDefault(); cam.dist = Math.max(5, Math.min(17, cam.dist + e.deltaY * 0.01)); };
+    dom.addEventListener('pointerdown', pd);
+    dom.addEventListener('pointermove', pm);
+    dom.addEventListener('pointerup', pu);
+    dom.addEventListener('pointercancel', pu);
+    dom.addEventListener('wheel', wh, { passive: false });
+    dom.style.cursor = 'grab';
     const keys: Record<string, boolean> = {};
     const onKey = (e: KeyboardEvent, v: boolean) => {
       keys[e.code] = v;
@@ -234,21 +307,36 @@ export const Proto3D: React.FC = () => {
       ix += joyRef.current.x; iz += joyRef.current.y;
       const len = Math.hypot(ix, iz);
       const holdingFix = holdRef.current;
+      let moveSpeed = 0;
       if (len > 0.08 && !S.failed) {
         const k = Math.min(1, len) / len;
-        player.position.x += ix * k * SPEED * dt;
-        player.position.z += iz * k * SPEED * dt;
-        player.rotation.y = Math.atan2(ix, iz);
-        player.children[0].position.y = 0.7 + Math.sin(S.time * 14) * 0.04;
+        const sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw);
+        const wx = (ix * cy + iz * sy) * k, wz = (-ix * sy + iz * cy) * k;
+        player.position.x += wx * SPEED * dt;
+        player.position.z += wz * SPEED * dt;
+        // плавный поворот лицом по ходу
+        const targetRot = Math.atan2(wx, wz);
+        let dr = targetRot - player.rotation.y;
+        dr = Math.atan2(Math.sin(dr), Math.cos(dr));
+        player.rotation.y += dr * Math.min(1, dt * 12);
+        moveSpeed = Math.min(1, len) * SPEED * dt;
       }
       player.position.x = Math.max(-ROOM_W / 2 + 0.7, Math.min(ROOM_W / 2 - 0.7, player.position.x));
       player.position.z = Math.max(-ROOM_D / 2 + 1.5, Math.min(ROOM_D / 2 - 0.7, player.position.z));
 
-      // NPC слегка суетятся при протечке
-      npcs.forEach((n, i) => {
-        const panic = S.leak ? 1.6 : 0.4;
-        n.position.x += Math.sin(S.time * (0.8 + i) * panic) * dt * 0.6;
-        n.rotation.y += dt * 0.5;
+      // Жители бродят вокруг своих мест, при протечке суетятся быстрее
+      npcH.forEach((n, i) => {
+        const panic = S.leak ? 1.8 : 0.5;
+        const ang = S.time * 0.45 * panic + i * 2.1;
+        const tx = npcHome[i].x + Math.cos(ang) * 1.6;
+        const tz = npcHome[i].z + Math.sin(ang * 1.3) * 1.1;
+        n.group.position.x += (tx - n.group.position.x) * Math.min(1, dt * 1.2);
+        n.group.position.z += (tz - n.group.position.z) * Math.min(1, dt * 1.2);
+        const dx = n.group.position.x - npcPrev[i].x, dz = n.group.position.z - npcPrev[i].z;
+        const sp = Math.hypot(dx, dz);
+        if (sp > 0.0005) n.group.rotation.y = Math.atan2(dx, dz);
+        npcPrev[i].copy(n.group.position);
+        animate(n, sp, S.time);
       });
 
       // Спавн протечки
@@ -285,6 +373,15 @@ export const Proto3D: React.FC = () => {
       } else {
         S.flood = Math.max(0, S.flood - 6 * dt);
       }
+
+      // Анимация игрока
+      playerH.wrench.visible = loadoutRef.current !== 'none';
+      const working = near && holdingFix && loadoutRef.current !== 'none' && !S.failed;
+      if (working && S.leak) {
+        const dx = S.leak.x - player.position.x, dz = S.leak.z - player.position.z;
+        player.rotation.y = Math.atan2(dx, dz);
+      }
+      animate(playerH, moveSpeed, S.time, working);
 
       // Визуал протечки
       spray.visible = !!S.leak;
@@ -326,10 +423,17 @@ export const Proto3D: React.FC = () => {
       lamp.intensity = 26 + Math.sin(S.time * 3) * 3 + (S.leak ? Math.sin(S.time * 18) * 4 : 0);
       lamp.color.setHex(S.failed ? 0xff3a2a : S.leak ? 0xff7a3a : 0xffa23a);
 
-      // Камера
-      tmp.set(player.position.x * 0.8, 8.5 * camScale, player.position.z + 7.2 * camScale);
+      // Камера: орбита вокруг игрока
+      const d = cam.dist * camScale;
+      const cp = Math.cos(cam.pitch);
+      const hx = ROOM_W / 2 - 0.6, hz = ROOM_D / 2 - 0.6;
+      tmp.set(
+        Math.max(-hx, Math.min(hx, player.position.x + Math.sin(cam.yaw) * cp * d)),
+        Math.sin(cam.pitch) * d + 0.8,
+        Math.max(-hz - 3, Math.min(hz + 6, player.position.z + Math.cos(cam.yaw) * cp * d))
+      );
       camera.position.lerp(tmp, 1 - Math.pow(0.0005, dt));
-      camera.lookAt(player.position.x * 0.8, 0.8, player.position.z - 0.4);
+      camera.lookAt(player.position.x, 1.0, player.position.z);
 
       renderer.render(scene, camera);
 
@@ -346,6 +450,11 @@ export const Proto3D: React.FC = () => {
       window.removeEventListener('resize', resize);
       window.removeEventListener('keydown', kd);
       window.removeEventListener('keyup', ku);
+      dom.removeEventListener('pointerdown', pd);
+      dom.removeEventListener('pointermove', pm);
+      dom.removeEventListener('pointerup', pu);
+      dom.removeEventListener('pointercancel', pu);
+      dom.removeEventListener('wheel', wh);
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
@@ -452,7 +561,7 @@ export const Proto3D: React.FC = () => {
           style={{ left: `calc(50% - 28px + ${knob.x * 38}px)`, top: `calc(50% - 28px + ${knob.y * 38}px)` }}
         />
       </div>
-      <div className="hidden md:block absolute bottom-3 left-40 text-[10px] text-slate-500">WASD / стрелки — ходьба</div>
+      <div className="hidden md:block absolute bottom-3 left-40 text-[10px] text-slate-500">WASD / стрелки — ходьба · зажми мышь и тяни — камера · колёсико — масштаб</div>
 
       {hud.failed && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/60">
