@@ -21,8 +21,33 @@ export function buildWorld(scene: THREE.Scene, theme: Theme): World {
     const mt = new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m, emissive });
     mats.push(mt); return mt;
   };
+  // Текстуры: грузятся асинхронно; пока (или если) файла нет — остаётся обычный цвет.
+  const texs = new Map<string, THREE.Texture>();
+  const loader = new THREE.TextureLoader();
+  const getTex = (name: string, cb: (t: THREE.Texture) => void) => {
+    const have = texs.get(name);
+    if (have) { cb(have); return; }
+    loader.load(`/tex/${name}.jpg`, t => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+      texs.set(name, t); cb(t);
+    }, undefined, () => { /* нет файла — не страшно */ });
+  };
+  const tintOf = (c: number, k: number) => new THREE.Color(c).lerp(new THREE.Color(0xffffff), k).getHex();
+  const tmat = (c: number, tex: string, tint: number, tile: number, r = 0.85, m = 0.1) => {
+    const mt = new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
+    mt.userData.tile = tile;
+    getTex(tex, t => { mt.map = t; mt.color.setHex(tint); mt.needsUpdate = true; });
+    mats.push(mt); return mt;
+  };
+  const tileUV = (g: THREE.BoxGeometry, w: number, h: number, d: number, tile: number) => {
+    const uv = g.attributes.uv as THREE.BufferAttribute;
+    const dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+    for (let i = 0; i < uv.count; i++) { const f = Math.floor(i / 4); uv.setXY(i, uv.getX(i) * dims[f][0] / tile, uv.getY(i) * dims[f][1] / tile); }
+    uv.needsUpdate = true;
+  };
   const box = (w: number, h: number, d: number, mt: THREE.Material, x: number, y: number, z: number, ry = 0) => {
     const g = new THREE.BoxGeometry(w, h, d); geos.push(g);
+    if (mt.userData.tile) tileUV(g, w, h, d, mt.userData.tile);
     const me = new THREE.Mesh(g, mt); me.position.set(x, y, z); me.rotation.y = ry; group.add(me); return me;
   };
   const cyl = (rt: number, rb: number, h: number, mt: THREE.Material, x: number, y: number, z: number, rz = 0, seg = 16) => {
@@ -30,25 +55,28 @@ export function buildWorld(scene: THREE.Scene, theme: Theme): World {
     const me = new THREE.Mesh(g, mt); me.position.set(x, y, z); me.rotation.z = rz; group.add(me); return me;
   };
 
-  scene.fog = new THREE.Fog(theme.fog, 24, 60);
-  const hemi = new THREE.HemisphereLight(0x9fb2cc, 0x1a1410, 0.95);
+  scene.fog = new THREE.Fog(theme.fog, 48, 120);
+  const hemi = new THREE.HemisphereLight(0xb4c4dc, 0x2a2018, 1.3);
   const sun = new THREE.DirectionalLight(theme.lamp, 0.75);
   sun.position.set(6, 22, 8);
   group.add(hemi, sun);
 
-  const wallMat = mat(theme.wall, 0.8, 0.15);
+  const wallMat = tmat(theme.wall, 'wall-panel', tintOf(theme.wall, 0.55), 3, 0.8, 0.15);
   const floorBase = new THREE.Color(theme.floor);
   const dark = mat(0x1d2128);
-  const steel = mat(0x6b7480, 0.45, 0.7);
+  const steel = tmat(0x6b7480, 'steel', 0xd4dbe3, 3, 0.5, 0.45);
   const accent = mat(theme.accent, 0.5, 0.2);
-  const wood = mat(0x5a4a33);
+  const wood = tmat(0x5a4a33, 'wood', 0xe0c8a8, 2);
+  const hazardMat = tmat(0xd9a82a, 'hazard', 0xffffff, 1.4, 0.8, 0);
 
   // Полы комнат
   const roomFloors: Record<string, THREE.Mesh> = {};
   ROOMS.forEach((r, i) => {
     const g = new THREE.BoxGeometry(CW, 0.2, CD); geos.push(g);
+    tileUV(g, CW, 0.2, CD, 4);
     const c = floorBase.clone().offsetHSL(0, 0, ((i % 3) - 1) * 0.012);
-    const mt = mat(c.getHex(), 0.9, 0.2);
+    const ft = ({ medical: 'floor-medical', greenhouse: 'floor-greenhouse', generator: 'floor-metal', workshop: 'floor-metal', airlock: 'floor-metal' } as Record<string, string>)[r.id] || 'floor-concrete';
+    const mt = tmat(c.getHex(), ft, ft === 'floor-medical' ? 0xe6e6e6 : tintOf(theme.floor, 0.88), 4, 0.9, 0.15);
     const f = new THREE.Mesh(g, mt); f.position.set(r.cx, -0.1, r.cz); group.add(f);
     roomFloors[r.id] = f;
     // разметка пола
@@ -97,13 +125,16 @@ export function buildWorld(scene: THREE.Scene, theme: Theme): World {
     const g = new THREE.SphereGeometry(rad, 12, 10); geos.push(g);
     const m = new THREE.Mesh(g, mt); m.position.set(x, y, z); group.add(m); return m;
   };
-  const rug = (x: number, z: number, w: number, d: number, c: number) => box(w, 0.03, d, mat(c, 1, 0), x, 0.03, z);
-  const rrug = (x: number, z: number, rad: number, c: number) => cyl(rad, rad, 0.03, mat(c, 1, 0), x, 0.03, z, 0, 28);
-  const pool = (x: number, z: number, rad: number, c: number, op = 0.085) => {
+  const rug = (x: number, z: number, w: number, d: number, c: number) => box(w, 0.03, d, tmat(c, 'rug', tintOf(c, 0.5), 2.4, 1, 0), x, 0.03, z);
+  const rrug = (x: number, z: number, rad: number, c: number) => cyl(rad, rad, 0.03, tmat(c, 'rug', c === 0xffffff ? 0xffffff : tintOf(c, 0.5), 2.4, 1, 0), x, 0.03, z, 0, 36);
+  const pool = (x: number, z: number, rad: number, c: number, op = 0.5) => {
     const g = new THREE.CircleGeometry(rad, 28); geos.push(g);
     const m = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false }); mats.push(m);
+    getTex('lamp-glow', t => { m.alphaMap = t; m.needsUpdate = true; });
+    m.opacity = 0.0001; getTex('lamp-glow', () => { m.opacity = op; });
     const me = new THREE.Mesh(g, m); me.rotation.x = -Math.PI / 2; me.position.set(x, 0.05, z); group.add(me);
   };
+
   const hangLamp = (x: number, z: number, c = 0xffc27a, y = 2.5, spread = 2.4) => {
     cyl(0.02, 0.02, 1.0, dark, x, y + 0.5, z);
     const sh = cyl(0.1, 0.34, 0.3, emis(c), x, y, z, 0, 16); void sh;
@@ -132,9 +163,8 @@ export function buildWorld(scene: THREE.Scene, theme: Theme): World {
   };
   const stool = (x: number, z: number, c = 0x6b4f33) => { scyl(0.28, 0.28, 0.1, mat(c), x, 0.5, z, 12); cyl(0.04, 0.04, 0.5, dark, x, 0.25, z); };
   const red = mat(0xb03a3a), yellow = mat(0xd9a82a, 0.6), green = mat(0x4f7a4a);
-  const stripes = (x: number, z: number, w: number, d: number) => {
-    for (let i = 0; i < Math.round(w / 0.5); i++) box(0.22, 0.02, d, i % 2 ? dark : yellow, x - w / 2 + 0.25 + i * 0.5, 0.025, z);
-  };
+  const stripes = (x: number, z: number, w: number, d: number) => { box(w, 0.02, d, hazardMat, x, 0.03, z); };
+
 
   // Реквизит комнат (координаты — от центра отсека: dx вправо, dz к югу)
   const props: Record<string, (r: Room) => void> = {
@@ -195,7 +225,7 @@ export function buildWorld(scene: THREE.Scene, theme: Theme): World {
     },
     storage: r => {
       const X = (d: number) => r.cx + d, Z = (d: number) => r.cz + d;
-      const crate = mat(0x6b5a3c);
+      const crate = tmat(0x6b5a3c, 'crate', 0xffffff, 1.6);
       [[-5, -3.5], [-5, -2.3], [-3.8, -3.5], [5.2, 2.5], [5.2, -2.3], [4, -3.4]].forEach(([dx, dz], i) => {
         sbox(1.1, 1.0, 1.1, crate, X(dx), 0.5, Z(dz));
         if (i % 2 === 0) box(1.0, 0.9, 1.0, crate, X(dx), 1.45, Z(dz));
@@ -214,11 +244,11 @@ export function buildWorld(scene: THREE.Scene, theme: Theme): World {
       const bed = mat(0x3a3f47), quilt = [0x5a6577, 0x7a4a52, 0x4a6a5a, 0x7a6a4a];
       [-3.5, -2.1, 2.1, 3.5].forEach((dz, i) => {
         sbox(2.4, 0.4, 1.0, bed, X(-4.8), 0.4, Z(dz));
-        box(2.2, 0.15, 0.9, mat(quilt[i], 0.95), X(-4.8), 0.7, Z(dz));
+        box(2.2, 0.15, 0.9, tmat(quilt[i], 'fabric', tintOf(quilt[i], 0.5), 1.2, 0.95, 0), X(-4.8), 0.7, Z(dz));
         box(0.5, 0.14, 0.7, mat(0xdcd6c8, 0.95), X(-5.65), 0.84, Z(dz));
       });
-      rrug(X(0), Z(0.1), 2.7, 0x7a3b3b); rrug(X(0), Z(0.1), 2.0, 0xa8734a); rrug(X(0), Z(0.1), 1.3, 0x7a3b3b);
-      sbox(2.6, 0.12, 1.4, mat(0x6a5844), X(4.0), 0.8, Z(2.6));
+      rrug(X(0), Z(0.1), 2.8, 0xffffff);
+      sbox(2.6, 0.12, 1.4, wood, X(4.0), 0.8, Z(2.6));
       for (const [dx, dz] of [[-1.1, -0.6], [1.1, -0.6], [-1.1, 0.6], [1.1, 0.6]]) box(0.12, 0.8, 0.12, dark, X(4.0 + dx), 0.4, Z(2.6 + dz));
       mug(X(3.3), 0.92, Z(2.5), 0xd0a040); mug(X(4.1), 0.92, Z(2.8), 0xb0584a); box(0.5, 0.05, 0.4, mat(0xd8d0b8), X(4.7), 0.9, Z(2.5));
       stool(X(2.6), Z(3.9)); stool(X(5.4), Z(3.9));
@@ -251,7 +281,7 @@ export function buildWorld(scene: THREE.Scene, theme: Theme): World {
     },
     greenhouse: r => {
       const X = (d: number) => r.cx + d, Z = (d: number) => r.cz + d;
-      const soil = mat(0x4a3a28), leaf = mat(0x4fae48, 0.8), leaf2 = mat(0x7acb52, 0.8);
+      const soil = tmat(0x4a3a28, 'soil', 0xffffff, 1.6), leaf = mat(0x4fae48, 0.8), leaf2 = mat(0x7acb52, 0.8);
       for (const side of [-1, 1]) {
         for (const dz of [-3.4, -2.0, 2.0]) {
           sbox(4.0, 0.5, 1.0, soil, X(side * 4.0), 0.25, Z(dz));
@@ -304,6 +334,7 @@ export function buildWorld(scene: THREE.Scene, theme: Theme): World {
       scene.remove(group);
       clearObstacles();
       geos.forEach(g => g.dispose());
+      texs.forEach(t => t.dispose());
       mats.forEach(m => m.dispose());
       group.traverse(o => {
         if (o instanceof THREE.Sprite) { (o.material as THREE.SpriteMaterial).map?.dispose(); o.material.dispose(); }
