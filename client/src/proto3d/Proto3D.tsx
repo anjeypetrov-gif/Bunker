@@ -1,47 +1,84 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { getCardArt } from '../data/cardArt';
+import {
+  PROFESSIONS, BAGGAGE, INCIDENTS, THEMES, BOT_NAMES, BOT_SAY, cardType,
+  type IncidentType, type IncidentDef, type Theme
+} from './data';
+import { ROOMS, roomById, roomAt, collide, findPath, pathLength, MAP_X0, MAP_Z0, COLS, ROWS, CW, CD, type Pt } from './layout';
+import { buildWorld, type World } from './world';
+import { makeHuman, animate, makeBubble, say, tickBubble, makeLabel, type Human, type Bubble } from './humans';
 
 /**
- * Прототип 3D-режима «Бункер»: один отсек, протечка, починка гайки.
- * Локальный (без сети): цель — проверить ощущения, управление на телефоне и идею
- * «карты дают действия в пространстве».
+ * Прототип «Бункер 3D · альфа»: большой бункер из 9 отсеков, аварии из сценариев игры,
+ * боты, которые замечают проблемы и идут чинить, и командная работа.
+ * Локальный (без сети): проверяем ощущения и механику.
  */
 
-type Loadout = 'pro' | 'wrench' | 'none';
+const GAME_LEN = 150;
+const SPEED = 4.8;
+const rnd = <T,>(a: T[]): T => a[Math.floor(Math.random() * a.length)];
 
-const LOADOUTS: { id: Loadout; label: string; hint: string }[] = [
-  { id: 'pro', label: 'Сантехник + ящик инструментов', hint: 'Чинит быстро' },
-  { id: 'wrench', label: 'Только ящик инструментов', hint: 'Чинит медленно' },
-  { id: 'none', label: 'Без навыков и инструмента', hint: 'Нечем закрутить гайку' }
-];
-
-interface Hud {
-  flood: number;
-  progress: number;
-  near: boolean;
-  leak: boolean;
-  msg: string;
-  fixed: number;
-  failed: boolean;
+interface Actor {
+  id: string; name: string; prof: string; bag: string[]; color: number;
+  h: Human; bubble: Bubble; exp: Partial<Record<IncidentType, number>>;
+  state: 'idle' | 'goto' | 'work' | 'panic'; path: Pt[]; target: number | null; wanderT: number; isBot: boolean;
+  prev: Pt; workSay: number;
 }
 
-const ROOM_W = 15;
-const ROOM_D = 10;
-const SPEED = 4.6;
+interface Emitter { pts: THREE.Points; pos: Float32Array; vel: Float32Array; life: Float32Array; cfg: PCfg }
+interface Inc {
+  id: number; def: IncidentDef; roomId: string; progress: number; age: number;
+  workers: string[]; beacon: THREE.Mesh; ring: THREE.Mesh; icon: THREE.Sprite; em: Emitter; spawnT: number;
+}
+interface PCfg { g: number; up: [number, number]; spread: number; y: number; life: number; size: number; flat?: boolean; ring?: boolean }
+
+const PCFG: Record<IncidentType, PCfg> = {
+  leak: { g: 9, up: [0.5, 1.7], spread: 1.2, y: 1.6, life: 0.9, size: 0.14 },
+  power: { g: 6, up: [1.5, 3.5], spread: 1.6, y: 1.2, life: 0.5, size: 0.13 },
+  vent: { g: 1.5, up: [0, 0], spread: 0.7, y: 2.6, life: 1.3, size: 0.2 },
+  mold: { g: -0.3, up: [0.2, 0.6], spread: 0.6, y: 0.5, life: 1.6, size: 0.17 },
+  rats: { g: 0, up: [0, 0], spread: 3, y: 0.15, life: 0.9, size: 0.22, flat: true },
+  fever: { g: -0.5, up: [0.3, 0.8], spread: 0.4, y: 0.9, life: 1.4, size: 0.15 },
+  radio: { g: 0, up: [0.1, 0.1], spread: 2.4, y: 2.3, life: 1.0, size: 0.13, ring: true },
+  panic: { g: -0.2, up: [0.5, 1.2], spread: 1.0, y: 1.4, life: 1.0, size: 0.16 },
+  theft: { g: -0.2, up: [0.3, 0.9], spread: 0.6, y: 1.3, life: 1.2, size: 0.14 }
+};
+const NP = 48;
+
+const skillOf = (a: { prof: string; bag: string[]; exp: Partial<Record<IncidentType, number>> }, d: IncidentDef) => {
+  const pro = d.pros.includes(a.prof) ? 1 : 0;
+  const tool = a.bag.some(b => d.tools.includes(b)) ? 1 : 0;
+  return { pro, tool, cap: 1 + 1.3 * pro + 0.9 * tool + (a.exp[d.type] || 0) };
+};
+
+interface HudInc { id: number; type: IncidentType; title: string; icon: string; progress: number; workers: number; critical: boolean; room: string }
+interface HudPt { id: string; x: number; z: number; color: number; me: boolean }
+interface HudBot { id: string; name: string; prof: string; state: string; color: number; exp: number }
+interface Hud {
+  integrity: number; time: number; score: number; fixed: number; msg: string;
+  incs: HudInc[]; pts: HudPt[]; bots: HudBot[]; helpCd: number;
+  nearId: number | null; nearVerb: string; nearProgress: number; nearBoost: string; working: boolean;
+}
+const HUD0: Hud = { integrity: 100, time: 0, score: 0, fixed: 0, msg: '', incs: [], pts: [], bots: [], helpCd: 0, nearId: null, nearVerb: '', nearProgress: 0, nearBoost: '', working: false };
+
+const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
 export const Proto3D: React.FC = () => {
   const mountRef = useRef<HTMLDivElement>(null);
-  const [hud, setHud] = useState<Hud>({ flood: 0, progress: 0, near: false, leak: false, msg: 'Осмотрись в отсеке', fixed: 0, failed: false });
-  const [loadout, setLoadout] = useState<Loadout>('pro');
-  const loadoutRef = useRef<Loadout>('pro');
+  const [phase, setPhase] = useState<'setup' | 'play' | 'end'>('setup');
+  const [themeId, setThemeId] = useState('titan');
+  const [prof, setProf] = useState('Механик-дизелист');
+  const [bag, setBag] = useState<string[]>(['Топор и мультитул']);
+  const [hud, setHud] = useState<Hud>(HUD0);
+  const [result, setResult] = useState<{ win: boolean; fixed: number; integrity: number; score: number } | null>(null);
   const holdRef = useRef(false);
   const joyRef = useRef({ x: 0, y: 0 });
-  const resetRef = useRef<() => void>(() => {});
   const joyBase = useRef<HTMLDivElement>(null);
   const [knob, setKnob] = useState({ x: 0, y: 0 });
-  const [cardsOpen, setCardsOpen] = useState(() => window.innerWidth >= 768);
-
-  useEffect(() => { loadoutRef.current = loadout; }, [loadout]);
+  const api = useRef<{ start: (o: { themeId: string; prof: string; bag: string[] }) => void; preview: (id: string) => void; call: () => void }>({ start: () => {}, preview: () => {}, call: () => {} });
+  const setPhaseRef = useRef(setPhase);
+  setPhaseRef.current = setPhase;
 
   useEffect(() => {
     const mount = mountRef.current!;
@@ -49,406 +86,414 @@ export const Proto3D: React.FC = () => {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x07090d);
     mount.appendChild(renderer.domElement);
-
+    const dom = renderer.domElement;
+    dom.style.touchAction = 'none';
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x07090d, 14, 30);
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 60);
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 120);
     let camScale = 1;
-    const cam = { yaw: 0, pitch: 0.95, dist: 11 };
-
+    const cam = { yaw: 0, pitch: 1.12, dist: 16 };
     const resize = () => {
       const w = mount.clientWidth, h = mount.clientHeight;
-      renderer.setSize(w, h);
-      camera.aspect = w / h;
+      renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
       camScale = Math.max(1, 1.15 / camera.aspect);
-      camera.updateProjectionMatrix();
     };
     resize();
     window.addEventListener('resize', resize);
 
-    // ---------- Свет ----------
-    scene.add(new THREE.HemisphereLight(0x8fa3c0, 0x1a1410, 0.75));
-    const lamp = new THREE.PointLight(0xffa23a, 28, 22, 1.6);
-    lamp.position.set(0, 3.6, 0);
+    // ---------- Мир ----------
+    let theme: Theme = THEMES[0];
+    let world: World = buildWorld(scene, theme);
+    const lamp = new THREE.PointLight(theme.lamp, 16, 20, 1.5);
     scene.add(lamp);
-    const lamp2 = new THREE.PointLight(0xff7a2a, 10, 12, 1.8);
-    lamp2.position.set(-5, 3, -3);
-    scene.add(lamp2);
-
-    // ---------- Материалы ----------
-    const mat = (c: number, r = 0.85, m = 0.1) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
-    const floorMat = mat(0x2b3039, 0.9, 0.2);
-    const wallMat = mat(0x424a55, 0.8, 0.15);
-    const darkMat = mat(0x1d2128);
-    const pipeMat = mat(0x6b7480, 0.45, 0.7);
-    const orangeMat = mat(0xe8a33d, 0.5, 0.2);
-    const crateMat = mat(0x5a4a33);
-
-    const box = (w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number) => {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
-      mesh.position.set(x, y, z);
-      scene.add(mesh);
-      return mesh;
+    const applyTheme = (id: string) => {
+      theme = THEMES.find(t => t.id === id) || THEMES[0];
+      world.dispose();
+      world = buildWorld(scene, theme);
+      lamp.color.setHex(theme.lamp);
+      renderer.setClearColor(theme.fog);
     };
 
-    // Пол и стены
-    const floor = box(ROOM_W, 0.2, ROOM_D, floorMat, 0, -0.1, 0);
-    floor.receiveShadow = false;
-    box(ROOM_W, 3.4, 0.3, wallMat, 0, 1.7, -ROOM_D / 2);
-    box(0.3, 3.4, ROOM_D, wallMat, -ROOM_W / 2, 1.7, 0);
-    box(0.3, 3.4, ROOM_D, wallMat, ROOM_W / 2, 1.7, 0);
-    // Рёбра жёсткости на задней стене
-    for (let i = -3; i <= 3; i++) box(0.25, 3.4, 0.2, darkMat, i * 2.1, 1.7, -ROOM_D / 2 + 0.2);
-    // Полосы пола
-    for (let i = -3; i <= 3; i++) box(0.05, 0.02, ROOM_D, darkMat, i * 2.1, 0.01, 0);
-
-    // Мебель: нары, ящики, стол
-    box(2.4, 0.5, 1, mat(0x3a3f47), -5.2, 0.35, 3.6);
-    box(2.4, 0.5, 1, mat(0x3a3f47), -5.2, 1.5, 3.6);
-    box(0.12, 1.9, 0.12, darkMat, -6.3, 0.95, 3.2);
-    box(0.12, 1.9, 0.12, darkMat, -4.1, 0.95, 3.2);
-    box(1, 0.9, 1, crateMat, 5.8, 0.45, 3.4);
-    box(1, 0.9, 1, crateMat, 5.8, 1.35, 3.4);
-    box(0.9, 0.7, 0.9, crateMat, 4.7, 0.35, 3.8);
-    box(2, 0.1, 1.1, mat(0x55504a), 4, 0.8, -1.5);
-    box(0.12, 0.8, 0.12, darkMat, 3.1, 0.4, -1.9);
-    box(0.12, 0.8, 0.12, darkMat, 4.9, 0.4, -1.9);
-    box(0.12, 0.8, 0.12, darkMat, 3.1, 0.4, -1.1);
-    box(0.12, 0.8, 0.12, darkMat, 4.9, 0.4, -1.1);
-    // Люк
-    const hatch = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.14, 12, 36), orangeMat);
-    hatch.position.set(ROOM_W / 2 - 0.25, 1.6, -1);
-    hatch.rotation.y = Math.PI / 2;
-    scene.add(hatch);
-
-    // Труба вдоль задней стены + стыки
-    const pipeY = 2.3, pipeZ = -ROOM_D / 2 + 0.55;
-    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, ROOM_W - 1, 16), pipeMat);
-    pipe.rotation.z = Math.PI / 2;
-    pipe.position.set(0, pipeY, pipeZ);
-    scene.add(pipe);
-    const joints: THREE.Vector3[] = [];
-    for (const x of [-5, -1.6, 2, 5.4]) {
-      const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.35, 6), orangeMat);
-      ring.rotation.z = Math.PI / 2;
-      ring.position.set(x, pipeY, pipeZ);
-      scene.add(ring);
-      joints.push(new THREE.Vector3(x, pipeY, pipeZ));
-    }
-
-    // ---------- Протечка ----------
-    const MAX = 70;
-    const pPos = new Float32Array(MAX * 3);
-    const pVel = new Float32Array(MAX * 3);
-    const pLife = new Float32Array(MAX);
-    const pGeo = new THREE.BufferGeometry();
-    pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-    const spray = new THREE.Points(pGeo, new THREE.PointsMaterial({ color: 0x6fd0ff, size: 0.14, transparent: true, opacity: 0.9 }));
-    spray.frustumCulled = false;
-    spray.visible = false;
-    scene.add(spray);
-    const puddle = new THREE.Mesh(
-      new THREE.CircleGeometry(1, 40),
-      new THREE.MeshBasicMaterial({ color: 0x2a8fd0, transparent: true, opacity: 0.55 })
-    );
-    puddle.rotation.x = -Math.PI / 2;
-    puddle.position.y = 0.03;
-    puddle.visible = false;
-    scene.add(puddle);
-    const leakMark = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.05, 8, 24), new THREE.MeshBasicMaterial({ color: 0xff5a3a }));
-    leakMark.visible = false;
-    scene.add(leakMark);
-
-    const standMark = new THREE.Mesh(
-      new THREE.RingGeometry(0.7, 0.95, 32),
-      new THREE.MeshBasicMaterial({ color: 0x5ee08a, transparent: true, opacity: 0.8, side: THREE.DoubleSide })
-    );
-    standMark.rotation.x = -Math.PI / 2;
-    standMark.position.y = 0.05;
-    standMark.visible = false;
-    scene.add(standMark);
-
-    // ---------- Персонажи ----------
-    interface Human {
-      group: THREE.Group; legL: THREE.Group; legR: THREE.Group; armL: THREE.Group; armR: THREE.Group;
-      wrench: THREE.Mesh; phase: number;
-    }
-    const makeHuman = (shirt: number, pants: number, hair: number, skin = 0xd9b89a): Human => {
-      const g = new THREE.Group();
-      const m = (c: number, r = 0.75) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0.05 });
-      const add = (parent: THREE.Object3D, geo: THREE.BufferGeometry, mt: THREE.Material, x: number, y: number, z: number) => {
-        const me = new THREE.Mesh(geo, mt); me.position.set(x, y, z); parent.add(me); return me;
-      };
-      // Торс, таз, шея, голова, волосы
-      add(g, new THREE.BoxGeometry(0.62, 0.72, 0.34), m(shirt), 0, 1.38, 0);
-      add(g, new THREE.BoxGeometry(0.58, 0.22, 0.32), m(pants), 0, 0.93, 0);
-      add(g, new THREE.CylinderGeometry(0.09, 0.1, 0.12, 8), m(skin), 0, 1.8, 0);
-      add(g, new THREE.SphereGeometry(0.24, 18, 14), m(skin), 0, 2.0, 0);
-      const hairM = add(g, new THREE.SphereGeometry(0.26, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.55), m(hair, 0.9), 0, 2.03, -0.02);
-      hairM.rotation.x = -0.15;
-      // Нос — чтобы было видно, куда смотрит
-      add(g, new THREE.BoxGeometry(0.06, 0.08, 0.08), m(skin), 0, 1.98, 0.24);
-      // Ноги (пивот в бедре)
-      const mkLeg = (x: number) => {
-        const pv = new THREE.Group(); pv.position.set(x, 0.88, 0); g.add(pv);
-        add(pv, new THREE.BoxGeometry(0.24, 0.48, 0.26), m(pants), 0, -0.24, 0);
-        add(pv, new THREE.BoxGeometry(0.22, 0.4, 0.24), m(pants), 0, -0.64, 0);
-        add(pv, new THREE.BoxGeometry(0.24, 0.12, 0.38), m(0x20242b), 0, -0.86, 0.06);
-        return pv;
-      };
-      const legL = mkLeg(-0.16), legR = mkLeg(0.16);
-      // Руки (пивот в плече)
-      const mkArm = (x: number) => {
-        const pv = new THREE.Group(); pv.position.set(x, 1.68, 0); g.add(pv);
-        add(pv, new THREE.BoxGeometry(0.17, 0.42, 0.2), m(shirt), 0, -0.2, 0);
-        add(pv, new THREE.BoxGeometry(0.15, 0.4, 0.17), m(skin), 0, -0.58, 0);
-        return pv;
-      };
-      const armL = mkArm(-0.4), armR = mkArm(0.4);
-      // Гаечный ключ в правой руке (виден только у игрока с инструментом)
-      const wrench = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.5, 0.07), new THREE.MeshStandardMaterial({ color: 0xaab2bd, metalness: 0.8, roughness: 0.3 }));
-      wrench.position.set(0, -0.85, 0.12);
-      wrench.visible = false;
-      armR.add(wrench);
-      scene.add(g);
-      return { group: g, legL, legR, armL, armR, wrench, phase: Math.random() * 6 };
+    // ---------- Люди ----------
+    const mkActor = (id: string, name: string, shirt: number, pants: number, hair: number, skin: number, isBot: boolean): Actor => {
+      const h = makeHuman(scene, shirt, pants, hair, skin);
+      const bubble = makeBubble(h.group, 2.9);
+      return { id, name, prof: '', bag: [], color: shirt, h, bubble, exp: {}, state: 'idle', path: [], target: null, wanderT: 1, isBot, prev: { x: 0, z: 0 }, workSay: 0 };
     };
-    const animate = (h: Human, speed: number, t: number, working = false) => {
-      if (working) {
-        h.armR.rotation.x = -1.3 + Math.sin(t * 12) * 0.35;
-        h.armL.rotation.x = -0.9 + Math.sin(t * 12 + 1) * 0.15;
-        h.legL.rotation.x = h.legR.rotation.x = 0;
-        return;
-      }
-      h.phase += speed * 2.6;
-      const sw = Math.sin(h.phase) * Math.min(1, speed * 14) * 0.7;
-      h.legL.rotation.x = sw; h.legR.rotation.x = -sw;
-      h.armL.rotation.x = -sw * 0.8; h.armR.rotation.x = sw * 0.8;
-      h.group.position.y = Math.abs(Math.sin(h.phase)) * Math.min(1, speed * 14) * 0.06;
-    };
-    const playerH = makeHuman(0xe8a33d, 0x30363f, 0x3a2a1c);
-    const player = playerH.group;
-    player.position.set(0, 0, 2);
-    const npcH = [
-      makeHuman(0x4d78a6, 0x2b2f36, 0xc9b27a, 0xc99c7c),
-      makeHuman(0x6f8f5e, 0x3a3326, 0x1b1b1b, 0xe2c2a2)
+    const me = mkActor('me', 'Вы', 0xe8a33d, 0x30363f, 0x3a2a1c, 0xd9b89a, false);
+    const bots: Actor[] = [
+      mkActor('b0', BOT_NAMES[0], 0x4d78a6, 0x2b2f36, 0xc9b27a, 0xc99c7c, true),
+      mkActor('b1', BOT_NAMES[1], 0xb85a7a, 0x2c2a33, 0x1b1b1b, 0xe2c2a2, true),
+      mkActor('b2', BOT_NAMES[2], 0x6f8f5e, 0x3a3326, 0x6b3b1e, 0xd9b89a, true),
+      mkActor('b3', BOT_NAMES[3], 0x8a6fb0, 0x2b2f36, 0xd8c7a0, 0xe8cfb2, true)
     ];
-    const npcHome = [new THREE.Vector3(-2.5, 0, -1.2), new THREE.Vector3(2.4, 0, 1)];
-    npcH[0].group.position.copy(npcHome[0]);
-    npcH[1].group.position.copy(npcHome[1]);
-    const npcPrev = npcH.map(n => n.group.position.clone());
+    const all = [me, ...bots];
+    const hub = roomById('hub');
+    const place = (a: Actor, x: number, z: number) => { a.h.group.position.set(x, 0, z); a.prev = { x, z }; a.path = []; a.state = 'idle'; a.target = null; a.wanderT = Math.random() * 3; };
+    const spreadBots = () => bots.forEach((b, i) => { const r = [roomById('storage'), roomById('medical'), roomById('hub'), roomById('vent')][i]; place(b, r.cx + (Math.random() - 0.5) * 4, r.cz + 1.5 + (Math.random() - 0.5) * 2); });
+    place(me, hub.cx, hub.cz + 1.5);
+    spreadBots();
+
+    const giveBotLoadouts = (playerProf: string) => {
+      const pool = PROFESSIONS.filter(p => p !== playerProf).sort(() => Math.random() - 0.5);
+      bots.forEach((b, i) => {
+        b.prof = pool[i];
+        const related = Object.values(INCIDENTS).filter(d => d.pros.includes(b.prof)).flatMap(d => d.tools);
+        const first = related.length && Math.random() < 0.75 ? rnd(related) : rnd(BAGGAGE);
+        const second = rnd(BAGGAGE);
+        b.bag = Array.from(new Set([first, second]));
+        b.exp = {};
+      });
+    };
+    giveBotLoadouts('');
 
     // ---------- Состояние ----------
     const S = {
-      leak: null as THREE.Vector3 | null,
-      leakAt: 3, // секунды до первой протечки
-      flood: 0,
-      progress: 0,
-      fixed: 0,
-      failed: false,
-      msg: 'Осмотрись в отсеке',
-      time: 0
+      running: false, t: 0, clock: 0, integrity: 100, score: 0, fixed: 0, nextSpawn: 3, nextId: 1,
+      msg: 'Выбери бункер и карты, чтобы начать', helpCd: 0, assignT: 0, msgT: 0, incs: [] as Inc[], hudT: 0
     };
-    // Вращение камеры: перетаскивание мышью/пальцем, колёсико — масштаб
+    const setMsg = (m: string, ttl = 4) => { S.msg = m; S.msgT = ttl; };
+
+    // ---------- Аварии ----------
+    const beaconGeo = new THREE.CylinderGeometry(0.22, 0.22, 5, 10, 1, true);
+    const ringGeo = new THREE.RingGeometry(0.9, 1.15, 36);
+    const spawnIncident = () => {
+      const active = new Set(S.incs.map(i => i.def.type));
+      const cand = (Object.keys(INCIDENTS) as IncidentType[]).filter(t => !active.has(t));
+      if (!cand.length) return;
+      const w = cand.map(t => theme.weights[t] ?? 1);
+      let r = Math.random() * w.reduce((a, b) => a + b, 0), pick = cand[0];
+      for (let i = 0; i < cand.length; i++) { r -= w[i]; if (r <= 0) { pick = cand[i]; break; } }
+      const def = INCIDENTS[pick];
+      const room = roomById(def.room);
+      const beacon = new THREE.Mesh(beaconGeo, new THREE.MeshBasicMaterial({ color: def.color, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      beacon.position.set(room.station.x, 2.5, room.station.z);
+      const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: def.color, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2; ring.position.set(room.station.x, 0.06, room.station.z);
+      const icon = makeLabel(def.icon, 1.3, 1.3, '120px sans-serif', '#ffffff', '');
+      icon.position.set(room.station.x, 3.2, room.station.z);
+      const g = new THREE.BufferGeometry();
+      const pos = new Float32Array(NP * 3);
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const pts = new THREE.Points(g, new THREE.PointsMaterial({ color: def.color, size: PCFG[pick].size, transparent: true, opacity: 0.9, depthWrite: false }));
+      pts.frustumCulled = false;
+      scene.add(beacon, ring, icon, pts);
+      const em: Emitter = { pts, pos, vel: new Float32Array(NP * 3), life: new Float32Array(NP), cfg: PCFG[pick] };
+      S.incs.push({ id: S.nextId++, def, roomId: def.room, progress: 0, age: 0, workers: [], beacon, ring, icon, em, spawnT: S.clock });
+      setMsg(`⚠ ${def.title}!`, 5);
+      // боты замечают проблему
+      const noticer = bots.filter(b => b.state !== 'work').sort(() => Math.random() - 0.5)[0] || rnd(bots);
+      say(noticer.bubble, def.alert, 3);
+    };
+    const removeIncident = (inc: Inc) => {
+      scene.remove(inc.beacon, inc.ring, inc.icon, inc.em.pts);
+      (inc.beacon.material as THREE.Material).dispose(); (inc.ring.material as THREE.Material).dispose();
+      inc.icon.material.map?.dispose(); inc.icon.material.dispose();
+      inc.em.pts.geometry.dispose(); (inc.em.pts.material as THREE.Material).dispose();
+      S.incs = S.incs.filter(i => i !== inc);
+    };
+    const spot = (inc: Inc, k: number): Pt => {
+      const st = roomById(inc.roomId).station;
+      const ang = k * 2.2 + 0.6;
+      return { x: st.x + Math.cos(ang) * 1.25, z: st.z + Math.sin(ang) * 1.25 };
+    };
+    const sendBot = (b: Actor, inc: Inc, k: number) => {
+      b.state = 'goto'; b.target = inc.id;
+      b.path = findPath({ x: b.h.group.position.x, z: b.h.group.position.z }, spot(inc, k));
+    };
+    const botsOn = (inc: Inc) => bots.filter(b => b.target === inc.id);
+
+    const assignBots = () => {
+      for (const inc of S.incs) {
+        const need = inc.age > 24 ? 3 : inc.age > 14 ? 2 : 1;
+        let cur = botsOn(inc).length;
+        while (cur < need) {
+          const idle = bots.filter(b => b.state === 'idle' || b.state === 'panic');
+          if (!idle.length) break;
+          const st = roomById(inc.roomId).station;
+          let best: Actor | null = null, bestScore = -1, bestSkilled = false;
+          for (const b of idle) {
+            const sk = skillOf(b, inc.def);
+            const d = pathLength({ x: b.h.group.position.x, z: b.h.group.position.z }, findPath({ x: b.h.group.position.x, z: b.h.group.position.z }, st));
+            const sc = sk.cap / (1 + d / 10);
+            if (sc > bestScore) { best = b; bestScore = sc; bestSkilled = sk.pro + sk.tool > 0; }
+          }
+          if (!best) break;
+          // «не спец» идёт, только если проблема висит давно и больше никого нет
+          if (!bestSkilled && inc.age < 4) break;
+          sendBot(best, inc, cur + 1);
+          say(best.bubble, bestSkilled ? rnd(BOT_SAY.claim) : rnd(BOT_SAY.noskill), 2.6);
+          cur++;
+        }
+      }
+    };
+
+    const callHelp = () => {
+      if (!S.running || S.helpCd > 0) return;
+      if (!S.incs.length) { setMsg('Пока всё спокойно — звать некого'); return; }
+      const p = me.h.group.position;
+      const inc = [...S.incs].sort((a, b) => {
+        const sa = roomById(a.roomId).station, sb = roomById(b.roomId).station;
+        return Math.hypot(sa.x - p.x, sa.z - p.z) - Math.hypot(sb.x - p.x, sb.z - p.z);
+      })[0];
+      const free = bots.filter(b => b.state === 'idle' || b.state === 'panic');
+      if (!free.length) { setMsg('Все заняты — держись!'); S.helpCd = 3; return; }
+      free.slice(0, 3).forEach((b, i) => { sendBot(b, inc, botsOn(inc).length + i + 1); say(b.bubble, rnd(BOT_SAY.thanks), 2.4); });
+      setMsg(`📢 Позвал помощь: ${inc.def.title}`);
+      S.helpCd = 12;
+    };
+
+    const resetSim = () => {
+      [...S.incs].forEach(removeIncident);
+      S.t = 0; S.integrity = 100; S.score = 0; S.fixed = 0; S.nextSpawn = 3; S.helpCd = 0; S.assignT = 0;
+      all.forEach(a => { a.bubble.sp.visible = false; a.bubble.text = ''; });
+    };
+
+    const start = (o: { themeId: string; prof: string; bag: string[] }) => {
+      if (theme.id !== o.themeId) applyTheme(o.themeId);
+      resetSim();
+      me.prof = o.prof; me.bag = o.bag; me.exp = {};
+      giveBotLoadouts(o.prof);
+      place(me, hub.cx, hub.cz + 1.5); spreadBots();
+      S.running = true;
+      setMsg('Бункер ожил. Аварии начнутся с минуты на минуту…', 5);
+      setPhaseRef.current('play');
+    };
+    api.current = {
+      start, call: callHelp,
+      preview: id => { if (!S.running) applyTheme(id); }
+    };
+
+    const finish = (win: boolean) => {
+      S.running = false;
+      const score = Math.round(S.fixed * 100 + S.integrity * 5 + (win ? 200 : 0));
+      setResult({ win, fixed: S.fixed, integrity: Math.round(S.integrity), score });
+      setPhaseRef.current('end');
+      holdRef.current = false;
+    };
+
+    // ---------- Ввод ----------
     let drag: { x: number; y: number; id: number } | null = null;
-    const dom = renderer.domElement;
-    dom.style.touchAction = 'none';
     const pd = (e: PointerEvent) => { e.preventDefault(); drag = { x: e.clientX, y: e.clientY, id: e.pointerId }; dom.setPointerCapture(e.pointerId); };
     const pm = (e: PointerEvent) => {
       if (!drag || drag.id !== e.pointerId) return;
       cam.yaw -= (e.clientX - drag.x) * 0.008;
-      cam.pitch = Math.max(0.35, Math.min(1.4, cam.pitch + (e.clientY - drag.y) * 0.006));
+      cam.pitch = Math.max(0.4, Math.min(1.45, cam.pitch + (e.clientY - drag.y) * 0.006));
       drag.x = e.clientX; drag.y = e.clientY;
     };
     const pu = () => { drag = null; };
-    const wh = (e: WheelEvent) => { e.preventDefault(); cam.dist = Math.max(5, Math.min(17, cam.dist + e.deltaY * 0.01)); };
-    dom.addEventListener('pointerdown', pd);
-    dom.addEventListener('pointermove', pm);
-    dom.addEventListener('pointerup', pu);
-    dom.addEventListener('pointercancel', pu);
-    dom.addEventListener('wheel', wh, { passive: false });
+    const wh = (e: WheelEvent) => { e.preventDefault(); cam.dist = Math.max(6, Math.min(26, cam.dist + e.deltaY * 0.012)); };
     const cm = (e: Event) => e.preventDefault();
-    dom.addEventListener('contextmenu', cm);
+    dom.addEventListener('pointerdown', pd); dom.addEventListener('pointermove', pm);
+    dom.addEventListener('pointerup', pu); dom.addEventListener('pointercancel', pu);
+    dom.addEventListener('wheel', wh, { passive: false }); dom.addEventListener('contextmenu', cm);
+    document.addEventListener('contextmenu', cm);
     dom.style.cursor = 'grab';
     const keys: Record<string, boolean> = {};
-    const onKey = (e: KeyboardEvent, v: boolean) => {
-      keys[e.code] = v;
-      if (e.code === 'KeyE') holdRef.current = v;
-    };
     const kd = (e: KeyboardEvent) => {
       if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
-      onKey(e, true);
+      keys[e.code] = true;
+      if (e.code === 'KeyE') holdRef.current = true;
+      if (e.code === 'KeyQ' && !e.repeat) callHelp();
     };
+    const ku = (e: KeyboardEvent) => { keys[e.code] = false; if (e.code === 'KeyE') holdRef.current = false; };
     const blur = () => { for (const k of Object.keys(keys)) keys[k] = false; holdRef.current = false; drag = null; };
-    window.addEventListener('blur', blur);
-    document.addEventListener('contextmenu', cm);
-    const ku = (e: KeyboardEvent) => onKey(e, false);
-    window.addEventListener('keydown', kd);
-    window.addEventListener('keyup', ku);
-
-    resetRef.current = () => {
-      S.leak = null; S.leakAt = 2; S.flood = 0; S.progress = 0; S.fixed = 0; S.failed = false;
-      S.msg = 'Осмотрись в отсеке';
-      player.position.set(0, 0, 2);
-    };
-
-    const spawnLeak = () => {
-      S.leak = joints[Math.floor(Math.random() * joints.length)].clone();
-      S.progress = 0;
-      S.msg = 'Протечка! Встань на зелёный круг у трубы';
-      for (let i = 0; i < MAX; i++) pLife[i] = 0;
-    };
+    window.addEventListener('keydown', kd); window.addEventListener('keyup', ku); window.addEventListener('blur', blur);
 
     // ---------- Цикл ----------
     const clock = new THREE.Clock();
-    let raf = 0, hudTimer = 0;
+    let raf = 0;
     const tmp = new THREE.Vector3();
+    let darkness = 0;
+
+    const stepBot = (b: Actor, dt: number) => {
+      const g = b.h.group;
+      tickBubble(b.bubble, dt);
+      const speed = b.state === 'panic' ? 5.6 : 3.9;
+      let moved = 0;
+      if (b.path.length) {
+        const p = b.path[0];
+        const dx = p.x - g.position.x, dz = p.z - g.position.z, d = Math.hypot(dx, dz);
+        if (d < 0.22) b.path.shift();
+        else {
+          const st = Math.min(d, speed * dt);
+          g.position.x += (dx / d) * st; g.position.z += (dz / d) * st;
+          const tr = Math.atan2(dx, dz);
+          let dr = tr - g.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
+          g.rotation.y += dr * Math.min(1, dt * 12);
+          moved = st;
+        }
+      } else if (b.state === 'goto') {
+        b.state = 'work'; b.workSay = 1 + Math.random() * 3;
+      } else if (b.state === 'idle' || b.state === 'panic') {
+        b.wanderT -= dt;
+        if (b.wanderT <= 0) {
+          const r = b.state === 'panic' ? rnd(ROOMS) : (Math.random() < 0.5 ? hub : rnd(ROOMS));
+          b.path = findPath({ x: g.position.x, z: g.position.z }, { x: r.cx + (Math.random() - 0.5) * 7, z: r.cz + (Math.random() - 0.5) * 4 });
+          b.wanderT = b.state === 'panic' ? 1 + Math.random() * 2 : 5 + Math.random() * 7;
+          if (b.state === 'panic' && Math.random() < 0.6) say(b.bubble, rnd(BOT_SAY.panic), 2);
+        }
+      }
+      const working = b.state === 'work' && !b.path.length;
+      if (working) {
+        const inc = S.incs.find(i => i.id === b.target);
+        if (inc) {
+          const st = roomById(inc.roomId).station;
+          g.rotation.y = Math.atan2(st.x - g.position.x, st.z - g.position.z);
+          b.workSay -= dt;
+          if (b.workSay <= 0) { say(b.bubble, rnd(BOT_SAY.work), 1.6); b.workSay = 5 + Math.random() * 4; }
+        }
+      }
+      animate(b.h, moved / Math.max(dt, 0.001) * 0.0165, S.clock, working, b.state === 'panic');
+    };
 
     const tick = () => {
       raf = requestAnimationFrame(tick);
       const dt = Math.min(clock.getDelta(), 0.05);
-      S.time += dt;
+      S.clock += dt;
+      const run = S.running;
+      if (S.msgT > 0) { S.msgT -= dt; if (S.msgT <= 0 && run) S.msg = ''; }
+      S.helpCd = Math.max(0, S.helpCd - dt);
 
-      // Движение игрока
+      // Игрок
+      const mp = me.h.group;
+      tickBubble(me.bubble, dt);
       let ix = (keys['KeyD'] || keys['ArrowRight'] ? 1 : 0) - (keys['KeyA'] || keys['ArrowLeft'] ? 1 : 0);
       let iz = (keys['KeyS'] || keys['ArrowDown'] ? 1 : 0) - (keys['KeyW'] || keys['ArrowUp'] ? 1 : 0);
       ix += joyRef.current.x; iz += joyRef.current.y;
       const len = Math.hypot(ix, iz);
-      const holdingFix = holdRef.current;
       let moveSpeed = 0;
-      if (len > 0.08 && !S.failed) {
+      if (len > 0.08 && run) {
         const k = Math.min(1, len) / len;
         const sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw);
         const wx = (ix * cy + iz * sy) * k, wz = (-ix * sy + iz * cy) * k;
-        player.position.x += wx * SPEED * dt;
-        player.position.z += wz * SPEED * dt;
-        // плавный поворот лицом по ходу
-        const targetRot = Math.atan2(wx, wz);
-        let dr = targetRot - player.rotation.y;
-        dr = Math.atan2(Math.sin(dr), Math.cos(dr));
-        player.rotation.y += dr * Math.min(1, dt * 12);
+        const c = collide(mp.position.x + wx * SPEED * dt, mp.position.z + wz * SPEED * dt, 0.45);
+        mp.position.x = c.x; mp.position.z = c.z;
+        let dr = Math.atan2(wx, wz) - mp.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
+        mp.rotation.y += dr * Math.min(1, dt * 12);
         moveSpeed = Math.min(1, len) * SPEED * dt;
       }
-      player.position.x = Math.max(-ROOM_W / 2 + 0.7, Math.min(ROOM_W / 2 - 0.7, player.position.x));
-      player.position.z = Math.max(-ROOM_D / 2 + 1.5, Math.min(ROOM_D / 2 - 0.7, player.position.z));
 
-      // Жители бродят вокруг своих мест, при протечке суетятся быстрее
-      npcH.forEach((n, i) => {
-        const panic = S.leak ? 1.8 : 0.5;
-        const ang = S.time * 0.45 * panic + i * 2.1;
-        const tx = npcHome[i].x + Math.cos(ang) * 1.6;
-        const tz = npcHome[i].z + Math.sin(ang * 1.3) * 1.1;
-        n.group.position.x += (tx - n.group.position.x) * Math.min(1, dt * 1.2);
-        n.group.position.z += (tz - n.group.position.z) * Math.min(1, dt * 1.2);
-        const dx = n.group.position.x - npcPrev[i].x, dz = n.group.position.z - npcPrev[i].z;
-        const sp = Math.hypot(dx, dz);
-        if (sp > 0.0005) n.group.rotation.y = Math.atan2(dx, dz);
-        npcPrev[i].copy(n.group.position);
-        animate(n, sp, S.time);
-      });
-
-      // Спавн протечки
-      if (!S.leak && !S.failed) {
-        S.leakAt -= dt;
-        if (S.leakAt <= 0) spawnLeak();
+      // Ближайшая авария рядом с игроком
+      let near: Inc | null = null;
+      for (const inc of S.incs) {
+        const st = roomById(inc.roomId).station;
+        if (Math.hypot(st.x - mp.position.x, st.z - mp.position.z) < 2.8) { near = inc; break; }
       }
+      const playerWorking = run && !!near && holdRef.current;
 
-      // Протечка и починка
-      let near = false;
-      if (S.leak) {
-        const target = new THREE.Vector3(S.leak.x, 0, S.leak.z + 1.4);
-        near = player.position.distanceTo(target) < 2.3;
-        standMark.position.set(target.x, 0.05, target.z);
-        standMark.scale.setScalar(1 + Math.sin(S.time * 6) * 0.1);
-        const lo = loadoutRef.current;
-        const canFix = lo !== 'none';
-        const rate = lo === 'pro' ? 0.34 : lo === 'wrench' ? 0.15 : 0;
-        if (near && holdingFix && canFix && !S.failed) {
-          S.progress = Math.min(1, S.progress + rate * dt);
-          S.msg = 'Закручиваю гайку…';
-        } else {
-          S.progress = Math.max(0, S.progress - 0.12 * dt);
-          if (near && !canFix) S.msg = 'Нечем закрутить гайку: нужен ящик инструментов';
-          else if (near) S.msg = 'Зажми «Закрутить гайку» (или E)';
-          else if (!S.failed) S.msg = 'Протечка! Встань на зелёный круг у трубы';
+      // Логика аварий
+      if (run) {
+        S.t += dt;
+        const maxInc = S.t > 100 ? 5 : S.t > 50 ? 4 : 3;
+        if (S.incs.length < maxInc && S.t >= S.nextSpawn) {
+          spawnIncident();
+          S.nextSpawn = S.t + (6 + Math.random() * 4) * Math.max(0.45, 1 - S.t / 250);
         }
-        if (S.progress >= 1) {
-          S.leak = null; S.fixed += 1; S.leakAt = 4; S.progress = 0;
-          S.msg = 'Протечка устранена! +шанс выживания бункера';
+        let drain = 0;
+        for (const inc of [...S.incs]) {
+          inc.age += dt;
+          const wk: string[] = [];
+          let rate = 0;
+          for (const b of bots) if (b.target === inc.id && b.state === 'work' && !b.path.length) { wk.push(b.id); rate += skillOf(b, inc.def).cap * 0.6; }
+          if (playerWorking && near === inc) { wk.push('me'); rate += skillOf(me, inc.def).cap; }
+          inc.workers = wk;
+          inc.progress = Math.min(1, inc.progress + (rate / 10) * dt);
+          drain += inc.def.severity * (1 + inc.age / 40);
+          if (inc.progress >= 1) {
+            S.fixed++; S.score += 100; S.integrity = Math.min(100, S.integrity + 4);
+            const doers = all.filter(a => wk.includes(a.id));
+            doers.forEach(a => { a.exp[inc.def.type] = Math.min(0.6, (a.exp[inc.def.type] || 0) + 0.12); });
+            const helper = doers.find(a => a.isBot);
+            if (helper) say(helper.bubble, rnd(BOT_SAY.done), 2.2);
+            if (wk.includes('me')) setMsg(`✔ ${inc.def.title} устранена! Ты молодец`, 4); else setMsg(`✔ ${inc.def.title} устранена командой`, 4);
+            bots.filter(b => b.target === inc.id).forEach(b => { b.state = 'idle'; b.target = null; b.path = []; b.wanderT = 1 + Math.random() * 2; });
+            removeIncident(inc);
+          }
         }
-        S.flood = Math.min(100, S.flood + (100 / 55) * dt);
-        if (S.flood >= 100 && !S.failed) { S.failed = true; S.msg = 'Отсек затоплен. Бункер потерян…'; }
+        S.integrity = Math.max(0, Math.min(100, S.integrity - drain * dt + (S.incs.length ? 0 : 0.15 * dt)));
+        S.assignT -= dt;
+        if (S.assignT <= 0) { assignBots(); S.assignT = 0.5; }
+        // паника у свободных ботов при низкой целостности
+        bots.forEach(b => {
+          if (b.state === 'idle' && S.integrity < 35) { b.state = 'panic'; b.wanderT = 0; }
+          else if (b.state === 'panic' && S.integrity > 45) { b.state = 'idle'; b.wanderT = 1; }
+        });
+        if (S.integrity <= 0) { setMsg('Бункер потерян…', 8); finish(false); }
+        else if (S.t >= GAME_LEN) { setMsg('Вы пережили смену!', 8); finish(true); }
       } else {
-        S.flood = Math.max(0, S.flood - 6 * dt);
+        // вне игры — просто живая сцена
+        bots.forEach(b => { if (b.state === 'panic') b.state = 'idle'; });
       }
+
+      // Боты
+      bots.forEach(b => stepBot(b, dt));
 
       // Анимация игрока
-      playerH.wrench.visible = loadoutRef.current !== 'none';
-      const working = near && holdingFix && loadoutRef.current !== 'none' && !S.failed;
-      if (working && S.leak) {
-        const dx = S.leak.x - player.position.x, dz = S.leak.z - player.position.z;
-        player.rotation.y = Math.atan2(dx, dz);
+      me.h.wrench.visible = me.bag.some(b => b.includes('мультитул') || b.includes('Лопата'));
+      if (playerWorking && near) {
+        const st = roomById(near.roomId).station;
+        mp.rotation.y = Math.atan2(st.x - mp.position.x, st.z - mp.position.z);
       }
-      animate(playerH, moveSpeed, S.time, working);
+      animate(me.h, moveSpeed, S.clock, playerWorking);
 
-      // Визуал протечки
-      spray.visible = !!S.leak;
-      standMark.visible = !!S.leak;
-      leakMark.visible = !!S.leak;
-      if (S.leak) {
-        leakMark.position.copy(S.leak);
-        leakMark.position.z += 0.3;
-        leakMark.scale.setScalar(1 + Math.sin(S.time * 8) * 0.12);
-        for (let i = 0; i < MAX; i++) {
-          if (pLife[i] <= 0) {
-            pLife[i] = 0.5 + Math.random() * 0.6;
-            pPos[i * 3] = S.leak.x + (Math.random() - 0.5) * 0.1;
-            pPos[i * 3 + 1] = S.leak.y - 0.1;
-            pPos[i * 3 + 2] = S.leak.z + 0.25;
-            pVel[i * 3] = (Math.random() - 0.5) * 1.2;
-            pVel[i * 3 + 1] = 0.5 + Math.random() * 1.2;
-            pVel[i * 3 + 2] = 1.2 + Math.random() * 1.6;
+      // Визуал аварий
+      const powerOut = S.incs.some(i => i.def.type === 'power');
+      darkness += ((powerOut ? 1 : 0) - darkness) * Math.min(1, dt * 3);
+      world.hemi.intensity = 0.95 - 0.6 * darkness;
+      world.sun.intensity = 0.75 - 0.55 * darkness;
+      lamp.position.set(mp.position.x, 4.2, mp.position.z);
+      lamp.intensity = 16 + darkness * 14 + (powerOut ? Math.sin(S.clock * 22) * 4 : Math.sin(S.clock * 3) * 1.5);
+      for (const inc of S.incs) {
+        const pulse = 1 + Math.sin(S.clock * 7) * 0.12;
+        inc.ring.scale.setScalar(pulse);
+        (inc.beacon.material as THREE.MeshBasicMaterial).opacity = 0.18 + 0.14 * Math.sin(S.clock * 5) + inc.age / 120;
+        inc.icon.position.y = 3.2 + Math.sin(S.clock * 3) * 0.15;
+        const st = roomById(inc.roomId).station;
+        const em = inc.em, c = em.cfg;
+        for (let i = 0; i < NP; i++) {
+          if (em.life[i] <= 0) {
+            em.life[i] = c.life * (0.5 + Math.random() * 0.7);
+            const a = Math.random() * Math.PI * 2, sp = Math.random() * c.spread;
+            em.pos[i * 3] = st.x + (c.flat ? (Math.random() - 0.5) * 3.2 : (Math.random() - 0.5) * 0.3);
+            em.pos[i * 3 + 1] = c.y;
+            em.pos[i * 3 + 2] = st.z + (c.flat ? (Math.random() - 0.5) * 2.4 : (Math.random() - 0.5) * 0.3) + (inc.def.type === 'leak' ? 0.3 : 0);
+            const dir = c.ring ? a : a;
+            em.vel[i * 3] = Math.cos(dir) * sp * (c.ring ? 1.4 : 1);
+            em.vel[i * 3 + 1] = c.up[0] + Math.random() * (c.up[1] - c.up[0]);
+            em.vel[i * 3 + 2] = Math.sin(dir) * sp * (c.ring ? 1.4 : 1) + (inc.def.type === 'leak' ? 1.2 : 0);
           }
-          pLife[i] -= dt;
-          pVel[i * 3 + 1] -= 9 * dt;
-          pPos[i * 3] += pVel[i * 3] * dt;
-          pPos[i * 3 + 1] += pVel[i * 3 + 1] * dt;
-          pPos[i * 3 + 2] += pVel[i * 3 + 2] * dt;
-          if (pPos[i * 3 + 1] < 0.05) pLife[i] = 0;
+          em.life[i] -= dt;
+          em.vel[i * 3 + 1] -= c.g * dt;
+          em.pos[i * 3] += em.vel[i * 3] * dt;
+          em.pos[i * 3 + 1] += em.vel[i * 3 + 1] * dt;
+          em.pos[i * 3 + 2] += em.vel[i * 3 + 2] * dt;
+          if (em.pos[i * 3 + 1] < 0.05 && c.g > 0) em.life[i] = 0;
         }
-        pGeo.attributes.position.needsUpdate = true;
-      }
-      puddle.visible = S.flood > 1;
-      if (puddle.visible) {
-        const r = 0.8 + S.flood * 0.075;
-        puddle.scale.set(r, r, 1);
-        const base = S.leak ?? tmp.set(0, 0, -ROOM_D / 2 + 2);
-        puddle.position.x = base.x;
-        puddle.position.z = Math.min(base.z + 1.8, 0);
+        (em.pts.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
       }
 
-      // Аварийная лампа мерцает
-      lamp.intensity = 26 + Math.sin(S.time * 3) * 3 + (S.leak ? Math.sin(S.time * 18) * 4 : 0);
-      lamp.color.setHex(S.failed ? 0xff3a2a : S.leak ? 0xff7a3a : 0xffa23a);
-
-      // Камера: орбита вокруг игрока
-      const d = cam.dist * camScale;
-      const cp = Math.cos(cam.pitch);
-      const hx = ROOM_W / 2 - 0.6, hz = ROOM_D / 2 - 0.6;
-      tmp.set(
-        Math.max(-hx, Math.min(hx, player.position.x + Math.sin(cam.yaw) * cp * d)),
-        Math.sin(cam.pitch) * d + 0.8,
-        Math.max(-hz - 3, Math.min(hz + 6, player.position.z + Math.cos(cam.yaw) * cp * d))
-      );
+      // Камера
+      const d = cam.dist * camScale, cp = Math.cos(cam.pitch);
+      tmp.set(mp.position.x + Math.sin(cam.yaw) * cp * d, Math.sin(cam.pitch) * d + 0.8, mp.position.z + Math.cos(cam.yaw) * cp * d);
       camera.position.lerp(tmp, 1 - Math.pow(0.0005, dt));
-      camera.lookAt(player.position.x, 1.0, player.position.z);
-
+      camera.lookAt(mp.position.x, 1.0, mp.position.z);
       renderer.render(scene, camera);
 
-      hudTimer += dt;
-      if (hudTimer > 0.1) {
-        hudTimer = 0;
-        setHud({ flood: S.flood, progress: S.progress, near, leak: !!S.leak, msg: S.msg, fixed: S.fixed, failed: S.failed });
+      // HUD
+      S.hudT += dt;
+      if (S.hudT > 0.1) {
+        S.hudT = 0;
+        const nd = near ? near.def : null;
+        const sk = nd ? skillOf(me, nd) : null;
+        setHud({
+          integrity: S.integrity, time: Math.max(0, GAME_LEN - S.t), score: S.score, fixed: S.fixed, msg: S.msg,
+          incs: S.incs.map(i => ({ id: i.id, type: i.def.type, title: i.def.title, icon: i.def.icon, progress: i.progress, workers: i.workers.length, critical: i.age > 14, room: roomById(i.roomId).name })),
+          pts: all.map(a => ({ id: a.id, x: a.h.group.position.x, z: a.h.group.position.z, color: a.color, me: a.id === 'me' })),
+          bots: bots.map(b => ({ id: b.id, name: b.name, prof: b.prof, state: b.state, color: b.color, exp: Object.values(b.exp).reduce((x, y) => x + (y || 0), 0) })),
+          helpCd: S.helpCd, nearId: near ? near.id : null, nearVerb: nd ? nd.verb : '', nearProgress: near ? near.progress : 0,
+          nearBoost: sk ? (sk.pro && sk.tool ? 'Профессия и инструмент: быстро' : sk.pro ? 'Профессия подходит' : sk.tool ? 'Инструмент подходит' : 'Нет навыков — будет долго') : '',
+          working: playerWorking
+        });
       }
     };
     tick();
@@ -456,37 +501,42 @@ export const Proto3D: React.FC = () => {
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
-      window.removeEventListener('keydown', kd);
-      window.removeEventListener('keyup', ku);
-      dom.removeEventListener('pointerdown', pd);
-      dom.removeEventListener('pointermove', pm);
-      dom.removeEventListener('pointerup', pu);
-      dom.removeEventListener('pointercancel', pu);
-      dom.removeEventListener('wheel', wh);
-      dom.removeEventListener('contextmenu', cm);
-      window.removeEventListener('blur', blur);
+      window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); window.removeEventListener('blur', blur);
+      dom.removeEventListener('pointerdown', pd); dom.removeEventListener('pointermove', pm);
+      dom.removeEventListener('pointerup', pu); dom.removeEventListener('pointercancel', pu);
+      dom.removeEventListener('wheel', wh); dom.removeEventListener('contextmenu', cm);
       document.removeEventListener('contextmenu', cm);
       renderer.dispose();
-      mount.removeChild(renderer.domElement);
+      mount.removeChild(dom);
     };
   }, []);
 
   // ---------- Джойстик ----------
   const joyMove = (e: React.PointerEvent) => {
-    const base = joyBase.current;
-    if (!base) return;
+    const base = joyBase.current; if (!base) return;
     const r = base.getBoundingClientRect();
     let dx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2);
     let dy = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
-    const l = Math.hypot(dx, dy);
-    if (l > 1) { dx /= l; dy /= l; }
-    joyRef.current = { x: dx, y: dy };
-    setKnob({ x: dx, y: dy });
+    const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; }
+    joyRef.current = { x: dx, y: dy }; setKnob({ x: dx, y: dy });
   };
   const joyEnd = () => { joyRef.current = { x: 0, y: 0 }; setKnob({ x: 0, y: 0 }); };
 
-  const canFix = loadout !== 'none';
-  const pct = Math.round(hud.flood);
+  const toggleBag = (b: string) => setBag(cur => cur.includes(b) ? cur.filter(x => x !== b) : cur.length >= 2 ? [cur[1], b] : [...cur, b]);
+  const helps = Object.values(INCIDENTS).filter(d => d.pros.includes(prof) || d.tools.some(t => bag.includes(t)));
+  const pct = Math.round(hud.integrity);
+  const mm = 3.4;
+  const critical = pct < 35;
+
+  const CardChip: React.FC<{ type: 'profession' | 'baggage'; title: string; on: boolean; onClick: () => void }> = ({ type, title, on, onClick }) => {
+    const art = getCardArt(cardType(type), title);
+    return (
+      <button onClick={onClick} className={`flex items-center gap-2 text-left p-1.5 rounded border cursor-pointer ${on ? 'border-amber-500 bg-amber-500/15' : 'border-slate-700 bg-slate-900/70 hover:border-slate-500'}`}>
+        {art ? <img src={art} alt="" className="w-9 h-9 rounded object-cover shrink-0" draggable={false} /> : <div className="w-9 h-9 rounded bg-slate-800 shrink-0" />}
+        <span className={`text-[11px] leading-tight ${on ? 'text-amber-200 font-bold' : 'text-slate-300'}`}>{title}</span>
+      </button>
+    );
+  };
 
   return (
     <div
@@ -497,94 +547,168 @@ export const Proto3D: React.FC = () => {
     >
       <div ref={mountRef} className="absolute inset-0" />
 
-      {/* Верхняя панель */}
-      <div className="absolute top-0 left-0 right-0 p-2 pr-44 md:pr-60 flex flex-col gap-2 pointer-events-none">
-        <div className="flex items-center gap-2 pointer-events-auto">
-          <a href="/" className="px-2 py-1 text-[11px] whitespace-nowrap border border-slate-600 bg-slate-900/80 rounded hover:border-amber-500">← В игру</a>
-          <span className="hidden sm:inline text-[11px] text-amber-400 font-bold tracking-wide">3D ПРОТОТИП · ОТСЕК 1</span>
-          <span className="ml-auto text-[11px] text-emerald-400 whitespace-nowrap">Починено: {hud.fixed}</span>
-        </div>
-        <div className="max-w-md">
-          <div className="flex justify-between text-[10px] text-slate-400 mb-0.5"><span>ЗАТОПЛЕНИЕ ОТСЕКА</span><span>{pct}%</span></div>
-          <div className="h-2.5 bg-slate-800 border border-slate-600 rounded overflow-hidden">
-            <div className={`h-full transition-[width] duration-100 ${pct > 70 ? 'bg-red-500' : 'bg-sky-500'}`} style={{ width: `${pct}%` }} />
-          </div>
-        </div>
-        <div className={`text-xs px-2 py-1 rounded bg-slate-900/85 border w-fit max-w-md ${hud.failed ? 'border-red-500 text-red-300' : hud.leak ? 'border-amber-500 text-amber-200' : 'border-slate-600 text-slate-300'}`}>
-          {hud.msg}
-        </div>
-      </div>
-
-      {/* Выбор карт */}
-      <div className="absolute right-2 top-2 md:top-14 w-[170px] md:w-[210px] flex flex-col gap-1.5 z-10">
-        <button
-          onClick={() => setCardsOpen(o => !o)}
-          className="px-2 py-1.5 rounded border border-slate-600 bg-slate-900/90 text-[11px] text-amber-300 font-bold uppercase tracking-wide cursor-pointer text-left"
-        >
-          Мои карты {cardsOpen ? '▴' : '▾'}
-        </button>
-        {cardsOpen && LOADOUTS.map(l => (
-          <button
-            key={l.id}
-            onClick={() => setLoadout(l.id)}
-            className={`text-left px-2 py-1.5 rounded border text-[10px] md:text-[11px] leading-tight cursor-pointer ${loadout === l.id ? 'border-amber-500 bg-amber-500/15 text-amber-200' : 'border-slate-600 bg-slate-900/80 text-slate-300'}`}
-          >
-            <div className="font-bold">{l.label}</div>
-            <div className="opacity-70">{l.hint}</div>
-          </button>
-        ))}
-        {cardsOpen && <button
-          onClick={() => resetRef.current()}
-          className="mt-1 px-2 py-1.5 rounded border border-slate-600 bg-slate-900/80 text-[11px] text-slate-300 hover:border-amber-500 cursor-pointer"
-        >
-          ↻ Начать заново
-        </button>}
-      </div>
-
-      {/* Действие */}
-      {hud.leak && (
-        <div className="absolute bottom-6 right-4 md:right-1/2 md:translate-x-1/2 flex flex-col items-center gap-1">
-          {hud.near && canFix && (
-            <div className="w-40 h-2 bg-slate-800 border border-slate-600 rounded overflow-hidden">
-              <div className="h-full bg-emerald-500" style={{ width: `${Math.round(hud.progress * 100)}%` }} />
+      {phase === 'play' && (
+        <>
+          {/* Верх слева */}
+          <div className="absolute top-0 left-0 p-2 flex flex-col gap-1.5 pointer-events-none" style={{ maxWidth: 'calc(100% - 158px)', width: 330 }}>
+            <div className="flex items-center gap-2 pointer-events-auto">
+              <a href="/" className="px-2 py-1 text-[11px] whitespace-nowrap border border-slate-600 bg-slate-900/80 rounded hover:border-amber-500">← В игру</a>
+              <span className="text-[11px] text-emerald-400 whitespace-nowrap">✔ {hud.fixed}</span>
+              <span className={`text-[11px] ml-auto whitespace-nowrap ${hud.time < 20 ? 'text-red-400' : 'text-slate-300'}`}>⏱ {Math.floor(hud.time / 60)}:{String(Math.floor(hud.time % 60)).padStart(2, '0')}</span>
             </div>
-          )}
-          <button
-            onPointerDown={e => { e.preventDefault(); holdRef.current = true; }}
-            onPointerUp={() => { holdRef.current = false; }}
-            onPointerLeave={() => { holdRef.current = false; }}
-            onPointerCancel={() => { holdRef.current = false; }}
-            disabled={!hud.near}
-            className={`w-28 h-28 md:w-auto md:h-auto md:px-6 md:py-3 rounded-full md:rounded font-bold text-xs md:text-sm border-2 cursor-pointer ${hud.near ? (canFix ? 'bg-amber-500 text-slate-950 border-amber-300' : 'bg-slate-700 text-slate-300 border-slate-500') : 'bg-slate-900/80 text-slate-500 border-slate-700'}`}
+            <div>
+              <div className="flex justify-between text-[10px] text-slate-400 mb-0.5"><span>ЦЕЛОСТНОСТЬ БУНКЕРА</span><span>{pct}%</span></div>
+              <div className="h-2.5 bg-slate-800 border border-slate-600 rounded overflow-hidden">
+                <div className={`h-full transition-[width] duration-100 ${critical ? 'bg-red-500' : pct < 60 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+            {hud.msg && <div className="text-[11px] px-2 py-1 rounded bg-slate-900/90 border border-amber-500/60 text-amber-200 w-fit max-w-full">{hud.msg}</div>}
+            <div className="flex flex-col gap-1">
+              {hud.incs.map(i => (
+                <div key={i.id} className={`px-2 py-1 rounded border text-[10px] leading-tight bg-slate-900/85 ${i.critical ? 'border-red-500' : 'border-slate-600'}`}>
+                  <div className="flex items-center gap-1.5">
+                    <span>{i.icon}</span><span className="font-bold text-slate-100 truncate">{i.title}</span>
+                    <span className="ml-auto text-slate-400 whitespace-nowrap">👥{i.workers}</span>
+                  </div>
+                  <div className="text-slate-400">{i.room}</div>
+                  <div className="h-1.5 mt-0.5 bg-slate-800 rounded overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${Math.round(i.progress * 100)}%` }} /></div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Миникарта */}
+          <div className="absolute top-2 right-2 pointer-events-none">
+            <svg width={COLS * CW * mm} height={ROWS * CD * mm} viewBox={`${MAP_X0} ${MAP_Z0} ${COLS * CW} ${ROWS * CD}`} className="rounded border border-slate-600 bg-slate-950/80">
+              {ROOMS.map(r => (
+                <g key={r.id}>
+                  <rect x={r.x0 + 0.2} y={r.z0 + 0.2} width={CW - 0.4} height={CD - 0.4} fill="#0f172a" stroke="#475569" strokeWidth={0.25} />
+                  <text x={r.cx} y={r.cz + 0.4} fontSize={1.9} textAnchor="middle" fill="#64748b">{r.name.split(' ')[0]}</text>
+                </g>
+              ))}
+              {hud.incs.map(i => {
+                const st = roomById(Object.values(INCIDENTS).find(d => d.type === i.type)!.room).station;
+                return <circle key={i.id} cx={st.x} cy={st.z} r={1.5} fill={hex(INCIDENTS[i.type].color)} className="animate-pulse" />;
+              })}
+              {hud.pts.map(p => <circle key={p.id} cx={p.x} cy={p.z} r={p.me ? 1.15 : 0.9} fill={hex(p.color)} stroke={p.me ? '#fff' : 'none'} strokeWidth={0.3} />)}
+            </svg>
+            <div className="mt-1 flex flex-col gap-0.5 text-[9px] bg-slate-900/80 border border-slate-700 rounded p-1" style={{ width: COLS * CW * mm }}>
+              {hud.bots.map(b => (
+                <div key={b.id} className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: hex(b.color) }} />
+                  <span className="text-slate-200">{b.name}</span>
+                  <span className="text-slate-500 truncate">{b.prof}</span>
+                  <span className={`ml-auto whitespace-nowrap ${b.state === 'panic' ? 'text-red-400' : b.state === 'work' ? 'text-emerald-400' : b.state === 'goto' ? 'text-amber-300' : 'text-slate-500'}`}>
+                    {b.state === 'panic' ? 'паника' : b.state === 'work' ? 'чинит' : b.state === 'goto' ? 'бежит' : 'ждёт'}{b.exp > 0 ? ` ★${Math.round(b.exp * 10)}` : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Действия */}
+          <div className="absolute bottom-5 right-3 flex flex-col items-end gap-2">
+            {hud.nearId !== null && (
+              <div className="flex flex-col items-end gap-1">
+                <div className="text-[10px] text-slate-300 bg-slate-900/85 border border-slate-600 rounded px-2 py-0.5">{hud.nearBoost}</div>
+                <div className="w-40 h-2 bg-slate-800 border border-slate-600 rounded overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${Math.round(hud.nearProgress * 100)}%` }} /></div>
+                <button
+                  onPointerDown={e => { e.preventDefault(); holdRef.current = true; }}
+                  onPointerUp={() => { holdRef.current = false; }}
+                  onPointerLeave={() => { holdRef.current = false; }}
+                  onPointerCancel={() => { holdRef.current = false; }}
+                  className={`w-24 h-24 md:w-auto md:h-auto md:px-6 md:py-3 rounded-full md:rounded font-bold text-[11px] md:text-sm border-2 cursor-pointer bg-amber-500 text-slate-950 border-amber-300 ${hud.working ? 'brightness-125 scale-95' : ''}`}
+                >
+                  {hud.nearVerb.toUpperCase()}
+                  <div className="hidden md:block text-[10px] font-normal opacity-70">удерживай · клавиша E</div>
+                </button>
+              </div>
+            )}
+            <button
+              onClick={() => api.current.call()}
+              disabled={hud.helpCd > 0}
+              className={`px-3 py-2 rounded border text-[11px] font-bold cursor-pointer ${hud.helpCd > 0 ? 'border-slate-700 bg-slate-900/80 text-slate-500' : 'border-sky-400 bg-sky-500/20 text-sky-200'}`}
+            >
+              📢 ПОЗВАТЬ ПОМОЩЬ{hud.helpCd > 0 ? ` (${Math.ceil(hud.helpCd)})` : ' (Q)'}
+            </button>
+          </div>
+
+          {/* Роль игрока */}
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 hidden sm:flex items-center gap-2 text-[10px] text-slate-400 bg-slate-900/70 border border-slate-700 rounded px-2 py-1">
+            <span className="text-amber-300 font-bold">{prof}</span><span>·</span><span>{bag.join(', ') || 'без багажа'}</span>
+          </div>
+          <div className="hidden 2xl:block absolute bottom-3 left-40 text-[10px] text-slate-500">WASD — ходьба · мышь + тяни — камера · колёсико — масштаб · E — чинить · Q — позвать</div>
+
+          <div
+            ref={joyBase}
+            onPointerDown={e => { (e.target as HTMLElement).setPointerCapture(e.pointerId); joyMove(e); }}
+            onPointerMove={e => { if (e.buttons || e.pointerType === 'touch') joyMove(e); }}
+            onPointerUp={joyEnd}
+            onPointerCancel={joyEnd}
+            className="absolute bottom-5 left-3 w-32 h-32 rounded-full border-2 border-slate-600 bg-slate-900/50 touch-none"
           >
-            {hud.near ? 'ЗАКРУТИТЬ ГАЙКУ' : 'ПОДОЙДИ К ТРУБЕ'}
-            <div className="hidden md:block text-[10px] font-normal opacity-70">удерживай · клавиша E</div>
-          </button>
+            <div className="absolute w-14 h-14 rounded-full bg-amber-500/80 border-2 border-amber-300 pointer-events-none" style={{ left: `calc(50% - 28px + ${knob.x * 38}px)`, top: `calc(50% - 28px + ${knob.y * 38}px)` }} />
+          </div>
+        </>
+      )}
+
+      {/* Экран настройки */}
+      {phase === 'setup' && (
+        <div className="absolute inset-0 overflow-y-auto bg-slate-950/80 backdrop-blur-sm">
+          <div className="max-w-3xl mx-auto p-4 pb-10">
+            <div className="flex items-center gap-2 mb-3">
+              <a href="/" className="px-2 py-1 text-[11px] border border-slate-600 bg-slate-900/80 rounded hover:border-amber-500">← В игру</a>
+              <h1 className="text-amber-400 font-black tracking-wider text-lg">БУНКЕР 3D · АЛЬФА</h1>
+            </div>
+            <p className="text-xs text-slate-400 mb-4">Выживи смену в большом бункере: аварии из сценариев игры, твои карты дают навыки, а боты сами бегут на помощь. Можно позвать их кнопкой.</p>
+
+            <div className="text-[11px] text-slate-400 uppercase tracking-widest mb-1.5">1. Бункер</div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-1.5 mb-4">
+              {THEMES.map(t => (
+                <button key={t.id} onClick={() => { setThemeId(t.id); api.current.preview(t.id); }} className={`text-left p-2 rounded border cursor-pointer ${themeId === t.id ? 'border-amber-500 bg-amber-500/15' : 'border-slate-700 bg-slate-900/70 hover:border-slate-500'}`}>
+                  <div className="w-full h-1.5 rounded mb-1.5" style={{ background: hex(t.accent) }} />
+                  <div className={`text-xs font-bold ${themeId === t.id ? 'text-amber-200' : 'text-slate-200'}`}>{t.name}</div>
+                  <div className="text-[10px] text-slate-400 leading-tight">{t.sub}</div>
+                </button>
+              ))}
+            </div>
+
+            <div className="text-[11px] text-slate-400 uppercase tracking-widest mb-1.5">2. Твоя профессия</div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 mb-4">
+              {PROFESSIONS.map(p => <CardChip key={p} type="profession" title={p} on={prof === p} onClick={() => setProf(p)} />)}
+            </div>
+
+            <div className="text-[11px] text-slate-400 uppercase tracking-widest mb-1.5">3. Багаж (до двух предметов)</div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 mb-4">
+              {BAGGAGE.map(b => <CardChip key={b} type="baggage" title={b} on={bag.includes(b)} onClick={() => toggleBag(b)} />)}
+            </div>
+
+            <div className="p-2 rounded border border-slate-700 bg-slate-900/70 mb-4 text-[11px]">
+              <div className="text-slate-400 mb-1">Твои карты ускоряют починку:</div>
+              {helps.length ? (
+                <div className="flex flex-wrap gap-1.5">{helps.map(h => <span key={h.type} className="px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/40 text-emerald-300">{h.icon} {h.title}</span>)}</div>
+              ) : <span className="text-slate-500">ничего — тебе будет сложно, зато боты помогут</span>}
+            </div>
+
+            <button onClick={() => api.current.start({ themeId, prof, bag })} className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black tracking-wider rounded cursor-pointer">НАЧАТЬ СМЕНУ</button>
+          </div>
         </div>
       )}
 
-      {/* Джойстик */}
-      <div
-        ref={joyBase}
-        onPointerDown={e => { (e.target as HTMLElement).setPointerCapture(e.pointerId); joyMove(e); }}
-        onPointerMove={e => { if (e.buttons || e.pointerType === 'touch') joyMove(e); }}
-        onPointerUp={joyEnd}
-        onPointerCancel={joyEnd}
-        className="absolute bottom-6 left-4 w-32 h-32 rounded-full border-2 border-slate-600 bg-slate-900/50 touch-none"
-      >
-        <div
-          className="absolute w-14 h-14 rounded-full bg-amber-500/80 border-2 border-amber-300 pointer-events-none"
-          style={{ left: `calc(50% - 28px + ${knob.x * 38}px)`, top: `calc(50% - 28px + ${knob.y * 38}px)` }}
-        />
-      </div>
-      <div className="hidden md:block absolute bottom-3 left-40 text-[10px] text-slate-500">WASD / стрелки — ходьба · зажми мышь и тяни — камера · колёсико — масштаб</div>
-
-      {hud.failed && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/60">
-          <div className="p-6 border border-red-500 bg-slate-950 text-center max-w-xs">
-            <div className="text-red-400 font-bold mb-2">ОТСЕК ЗАТОПЛЕН</div>
-            <div className="text-xs text-slate-300 mb-4">Шанс выживания бункера упал. Попробуй с другими картами.</div>
-            <button onClick={() => resetRef.current()} className="px-4 py-2 bg-amber-500 text-slate-950 font-bold text-sm cursor-pointer">ЕЩЁ РАЗ</button>
+      {/* Итоги */}
+      {phase === 'end' && result && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/70 p-4">
+          <div className={`p-6 border bg-slate-950 text-center max-w-xs w-full ${result.win ? 'border-emerald-500' : 'border-red-500'}`}>
+            <div className={`font-black text-lg mb-2 ${result.win ? 'text-emerald-400' : 'text-red-400'}`}>{result.win ? 'СМЕНА ПРОЙДЕНА' : 'БУНКЕР ПОТЕРЯН'}</div>
+            <div className="text-xs text-slate-300 space-y-1 mb-4">
+              <div>Аварий устранено: <b className="text-slate-100">{result.fixed}</b></div>
+              <div>Целостность: <b className="text-slate-100">{result.integrity}%</b></div>
+              <div>Очки: <b className="text-amber-300">{result.score}</b></div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setPhase('setup')} className="flex-1 px-3 py-2 bg-amber-500 text-slate-950 font-bold text-sm cursor-pointer">ЕЩЁ РАЗ</button>
+              <a href="/" className="flex-1 px-3 py-2 border border-slate-600 text-slate-200 text-sm text-center">В ИГРУ</a>
+            </div>
           </div>
         </div>
       )}
