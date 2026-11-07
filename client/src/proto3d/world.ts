@@ -27,6 +27,7 @@ export function buildWorld(scene: THREE.Scene, theme: Theme): World {
   const getTex = (name: string, cb: (t: THREE.Texture) => void) => {
     const have = texs.get(name);
     if (have) { cb(have); return; }
+    if (typeof Image === 'undefined') return; // тесты в Node без браузера
     loader.load(`/tex/${name}.jpg`, t => {
       t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
       texs.set(name, t); cb(t);
