@@ -118,6 +118,11 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
   };
 
   const playerList = Object.values(players);
+  // Режим отображения: «список» — один игрок в строке, справа видны все раскрытые им карты.
+  const [rows, setRowsState] = useState<boolean>(() => {
+    try { return localStorage.getItem('bunker-video-rows') !== '0'; } catch { return true; }
+  });
+  const setRows = (v: boolean) => { setRowsState(v); try { localStorage.setItem('bunker-video-rows', v ? '1' : '0'); } catch { /* */ } };
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-slate-900/80 border border-slate-800 notch p-2.5 md:p-3.5 shadow-2xl">
@@ -125,6 +130,14 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
         <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2 font-mono">
           <Video className="w-4 h-4 text-amber-400" /> <span className="hidden sm:inline">ТРАНСЛЯЦИЯ ИЗ КАМЕР БУНКЕРА</span><span className="sm:hidden">КАМЕРЫ</span> ({playerList.length})
         </h3>
+
+        <button
+          onClick={() => setRows(!rows)}
+          title={rows ? 'Показать плиткой' : 'Показать списком: видно все карты игроков'}
+          className="ml-auto mr-2 md:ml-0 md:mr-0 p-1.5 px-2.5 notch-sm text-[11px] font-mono font-semibold bg-slate-800 text-slate-200 hover:bg-slate-700 cursor-pointer border border-slate-700 whitespace-nowrap"
+        >
+          {rows ? '▦ ПЛИТКОЙ' : '☰ СПИСКОМ'}
+        </button>
 
         {/* Local Quick Media Controls (на телефоне — только в нижней панели) */}
         <div className="hidden md:flex items-center gap-2">
@@ -151,12 +164,12 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
       </div>
 
       {/* Grid of Players */}
-      <div className="flex-1 min-h-0 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 overflow-y-auto pr-1 content-start auto-rows-max">
+      <div className={`flex-1 min-h-0 grid gap-2.5 overflow-y-auto pr-1 content-start auto-rows-max ${rows ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'}`}>
         {playerList.map(player => {
           const isSelf = player.id === currentSocketId;
           const remoteStream = remoteStreams[player.id];
 
-          return (
+          const cardEl = (
             <PlayerVideoCard
               key={player.id}
               player={player}
@@ -168,7 +181,15 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
               onKick={hostId === currentSocketId && !isSelf && onKick ? () => onKick(player.id) : undefined}
               speechSeconds={speechSeconds}
               onCardClick={(card) => setInspected({ playerName: player.name, card })}
+              hidePills={rows}
             />
+          );
+          if (!rows) return cardEl;
+          return (
+            <div key={player.id} className="flex gap-2 items-stretch">
+              <div className="w-[42%] sm:w-52 xl:w-44 shrink-0">{cardEl}</div>
+              <RevealedList player={player} onCardClick={(card) => setInspected({ playerName: player.name, card })} />
+            </div>
           );
         })}
       </div>
@@ -218,6 +239,47 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
   );
 };
 
+/** Все раскрытые игроком карты: миниатюра, тип и название. Нажатие открывает полное описание. */
+const RevealedList: React.FC<{ player: Player; onCardClick: (card: Card) => void }> = ({ player, onCardClick }) => {
+  const revealed = Object.values(player.cards || {}).filter(c => c && c.isRevealed && c.type !== 'actionCard');
+  const [failed, setFailed] = useState<Record<string, boolean>>({});
+  return (
+    <div className={`flex-1 min-w-0 border border-slate-800 bg-slate-950/60 p-1.5 ${player.isExiled ? 'opacity-60' : ''}`}>
+      <div className="text-[10px] font-mono text-slate-400 mb-1 flex items-center justify-between">
+        <span className="truncate font-bold text-slate-200">{player.name}</span>
+        <span className="shrink-0 ml-2">раскрыто: <span className="text-amber-300 font-bold">{revealed.length}</span></span>
+      </div>
+      {revealed.length === 0 ? (
+        <div className="text-[11px] text-slate-500 italic px-1 py-2">Пока ничего не раскрыто</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-1">
+          {revealed.map(c => {
+            const art = getCardArt(c.type, c.title);
+            return (
+              <button
+                key={c.id}
+                onClick={(e) => { e.stopPropagation(); onCardClick(c); }}
+                title="Показать описание карты"
+                className="flex items-center gap-1.5 text-left bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-amber-500/60 p-1 cursor-pointer min-w-0"
+              >
+                {art && !failed[c.id] ? (
+                  <img src={art} alt="" className="w-9 h-9 object-cover shrink-0 border border-slate-800" draggable={false} onError={() => setFailed(p => ({ ...p, [c.id]: true }))} />
+                ) : (
+                  <div className="w-9 h-9 shrink-0 bg-slate-800 border border-slate-700" />
+                )}
+                <div className="min-w-0 leading-tight">
+                  <div className="text-[8px] font-mono text-slate-500 uppercase truncate">{CARD_TYPE_LABELS[c.type]}</div>
+                  <div className="text-[11px] font-bold text-amber-200 break-words">{c.title}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface PlayerVideoCardProps {
   player: Player;
   isSelf: boolean;
@@ -228,6 +290,7 @@ interface PlayerVideoCardProps {
   speechSeconds?: number;
   onKick?: () => void;
   onCardClick: (card: Card) => void;
+  hidePills?: boolean;
 }
 
 const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
@@ -239,7 +302,8 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
   isSpeaker = false,
   speechSeconds = 0,
   onKick,
-  onCardClick
+  onCardClick,
+  hidePills = false
 }) => {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [soundBlocked, setSoundBlocked] = useState(false);
@@ -436,7 +500,7 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
           name block taller than expected) — otherwise the name overlay,
           despite having no clickable content of its own, would sit on top
           in the DOM stack and silently swallow clicks meant for a pill. */}
-      {player.cards && (
+      {player.cards && !hidePills && (
         <div className="absolute bottom-10 left-2 right-2 z-10 flex flex-wrap gap-1 max-h-12 overflow-hidden">
           {Object.values(player.cards).filter(c => c && c.isRevealed && c.type !== 'actionCard').map(c => (
             <button
