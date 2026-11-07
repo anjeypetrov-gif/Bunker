@@ -309,6 +309,12 @@ export const Lobby: React.FC<LobbyProps> = ({
             <LogIn className="w-5 h-5 text-amber-400" /> ВОЙТИ ПО КОДУ
           </button>
           <a
+            href="/?chronicle"
+            className="w-full py-3 px-6 bg-transparent hover:bg-slate-800 text-slate-300 font-bold notch border border-dashed border-slate-600 flex items-center justify-center gap-3 transition-all text-sm"
+          >
+            📜 ХРОНИКА БУНКЕРА <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/20 border border-amber-500/50 text-amber-400 rounded tracking-widest">АЛЬФА</span>
+          </a>
+          <a
             href="/?proto3d"
             className="w-full py-3 px-6 bg-transparent hover:bg-slate-800 text-slate-300 font-bold notch border border-dashed border-slate-600 flex items-center justify-center gap-3 transition-all text-sm"
           >
