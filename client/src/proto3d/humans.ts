@@ -114,7 +114,12 @@ export function makeLabel(text: string, w: number, h: number, font: string, colo
   c.width = 512; c.height = Math.round(512 * (h / w));
   const ctx = c.getContext('2d')!;
   if (bg) { ctx.fillStyle = bg; roundRect(ctx, 4, 4, c.width - 8, c.height - 8, 20); ctx.fill(); }
-  ctx.font = font; ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const m = font.match(/(\d+)px/);
+  let px = m ? parseInt(m[1], 10) : 40;
+  const fam = font.replace(/\d+px/, '{px}px');
+  ctx.font = fam.replace('{px}', String(px));
+  while (ctx.measureText(text).width > c.width - 36 && px > 14) { px -= 2; ctx.font = fam.replace('{px}', String(px)); }
   ctx.fillText(text, c.width / 2, c.height / 2 + 2);
   const tex = new THREE.CanvasTexture(c);
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }));

@@ -15,7 +15,9 @@ import { makeHuman, animate, makeBubble, say, tickBubble, makeLabel, type Human,
  * Локальный (без сети): проверяем ощущения и механику.
  */
 
-const GAME_LEN = 150;
+const STEP_LEN = 40;
+const STEP_TIMES = [3, 40, 80, 120];
+const GAME_LEN = STEP_LEN * 4;
 const SPEED = 4.8;
 const rnd = <T,>(a: T[]): T => a[Math.floor(Math.random() * a.length)];
 
@@ -56,11 +58,11 @@ interface HudInc { id: number; type: IncidentType; title: string; icon: string; 
 interface HudPt { id: string; x: number; z: number; color: number; me: boolean }
 interface HudBot { id: string; name: string; prof: string; state: string; color: number; exp: number }
 interface Hud {
-  integrity: number; time: number; score: number; fixed: number; msg: string;
+  integrity: number; time: number; step: number; stepIn: number; score: number; fixed: number; msg: string;
   incs: HudInc[]; pts: HudPt[]; bots: HudBot[]; helpCd: number;
   nearId: number | null; nearVerb: string; nearProgress: number; nearBoost: string; working: boolean;
 }
-const HUD0: Hud = { integrity: 100, time: 0, score: 0, fixed: 0, msg: '', incs: [], pts: [], bots: [], helpCd: 0, nearId: null, nearVerb: '', nearProgress: 0, nearBoost: '', working: false };
+const HUD0: Hud = { integrity: 100, time: 0, step: 0, stepIn: 0, score: 0, fixed: 0, msg: '', incs: [], pts: [], bots: [], helpCd: 0, nearId: null, nearVerb: '', nearProgress: 0, nearBoost: '', working: false };
 
 const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
@@ -148,7 +150,7 @@ export const Proto3D: React.FC = () => {
 
     // ---------- Состояние ----------
     const S = {
-      running: false, t: 0, clock: 0, integrity: 100, score: 0, fixed: 0, nextSpawn: 3, nextId: 1,
+      running: false, t: 0, clock: 0, integrity: 100, score: 0, fixed: 0, step: 0, nextId: 1,
       msg: 'Выбери бункер и карты, чтобы начать', helpCd: 0, assignT: 0, msgT: 0, incs: [] as Inc[], hudT: 0
     };
     const setMsg = (m: string, ttl = 4) => { S.msg = m; S.msgT = ttl; };
@@ -179,7 +181,6 @@ export const Proto3D: React.FC = () => {
       scene.add(beacon, ring, icon, pts);
       const em: Emitter = { pts, pos, vel: new Float32Array(NP * 3), life: new Float32Array(NP), cfg: PCFG[pick] };
       S.incs.push({ id: S.nextId++, def, roomId: def.room, progress: 0, age: 0, workers: [], beacon, ring, icon, em, spawnT: S.clock });
-      setMsg(`⚠ ${def.title}!`, 5);
       // боты замечают проблему
       const noticer = bots.filter(b => b.state !== 'work').sort(() => Math.random() - 0.5)[0] || rnd(bots);
       say(noticer.bubble, def.alert, 3);
@@ -244,7 +245,7 @@ export const Proto3D: React.FC = () => {
 
     const resetSim = () => {
       [...S.incs].forEach(removeIncident);
-      S.t = 0; S.integrity = 100; S.score = 0; S.fixed = 0; S.nextSpawn = 3; S.helpCd = 0; S.assignT = 0;
+      S.t = 0; S.integrity = 100; S.score = 0; S.fixed = 0; S.step = 0; S.helpCd = 0; S.assignT = 0;
       all.forEach(a => { a.bubble.sp.visible = false; a.bubble.text = ''; });
     };
 
@@ -255,7 +256,7 @@ export const Proto3D: React.FC = () => {
       giveBotLoadouts(o.prof);
       place(me, hub.cx, hub.cz + 1.5); spreadBots();
       S.running = true;
-      setMsg('Бункер ожил. Аварии начнутся с минуты на минуту…', 5);
+      setMsg('Обсуждение началось. Катастрофа — при смене шага', 5);
       setPhaseRef.current('play');
     };
     api.current = {
@@ -384,10 +385,12 @@ export const Proto3D: React.FC = () => {
       // Логика аварий
       if (run) {
         S.t += dt;
-        const maxInc = S.t > 100 ? 5 : S.t > 50 ? 4 : 3;
-        if (S.incs.length < maxInc && S.t >= S.nextSpawn) {
-          spawnIncident();
-          S.nextSpawn = S.t + (6 + Math.random() * 4) * Math.max(0.45, 1 - S.t / 250);
+        // Катастрофа случается только при смене шага, как в классической партии
+        if (S.step < STEP_TIMES.length && S.t >= STEP_TIMES[S.step]) {
+          const n = S.step >= 2 ? 2 : 1;
+          for (let k = 0; k < n; k++) spawnIncident();
+          setMsg(`Шаг ${S.step + 1}: катастрофа в бункере!`, 5);
+          S.step++;
         }
         let drain = 0;
         for (const inc of [...S.incs]) {
@@ -419,7 +422,7 @@ export const Proto3D: React.FC = () => {
           else if (b.state === 'panic' && S.integrity > 45) { b.state = 'idle'; b.wanderT = 1; }
         });
         if (S.integrity <= 0) { setMsg('Бункер потерян…', 8); finish(false); }
-        else if (S.t >= GAME_LEN) { setMsg('Вы пережили смену!', 8); finish(true); }
+        else if (S.t >= GAME_LEN) { setMsg('Бункер пережил все шаги!', 8); finish(true); }
       } else {
         // вне игры — просто живая сцена
         bots.forEach(b => { if (b.state === 'panic') b.state = 'idle'; });
@@ -486,7 +489,7 @@ export const Proto3D: React.FC = () => {
         const nd = near ? near.def : null;
         const sk = nd ? skillOf(me, nd) : null;
         setHud({
-          integrity: S.integrity, time: Math.max(0, GAME_LEN - S.t), score: S.score, fixed: S.fixed, msg: S.msg,
+          integrity: S.integrity, time: Math.max(0, GAME_LEN - S.t), step: Math.min(4, S.step), stepIn: S.step < STEP_TIMES.length ? Math.max(0, STEP_TIMES[S.step] - S.t) : Math.max(0, GAME_LEN - S.t), score: S.score, fixed: S.fixed, msg: S.msg,
           incs: S.incs.map(i => ({ id: i.id, type: i.def.type, title: i.def.title, icon: i.def.icon, progress: i.progress, workers: i.workers.length, critical: i.age > 14, room: roomById(i.roomId).name })),
           pts: all.map(a => ({ id: a.id, x: a.h.group.position.x, z: a.h.group.position.z, color: a.color, me: a.id === 'me' })),
           bots: bots.map(b => ({ id: b.id, name: b.name, prof: b.prof, state: b.state, color: b.color, exp: Object.values(b.exp).reduce((x, y) => x + (y || 0), 0) })),
@@ -554,7 +557,7 @@ export const Proto3D: React.FC = () => {
             <div className="flex items-center gap-2 pointer-events-auto">
               <a href="/" className="px-2 py-1 text-[11px] whitespace-nowrap border border-slate-600 bg-slate-900/80 rounded hover:border-amber-500">← В игру</a>
               <span className="text-[11px] text-emerald-400 whitespace-nowrap">✔ {hud.fixed}</span>
-              <span className={`text-[11px] ml-auto whitespace-nowrap ${hud.time < 20 ? 'text-red-400' : 'text-slate-300'}`}>⏱ {Math.floor(hud.time / 60)}:{String(Math.floor(hud.time % 60)).padStart(2, '0')}</span>
+              <span className="text-[11px] ml-auto whitespace-nowrap text-slate-300">Шаг {Math.max(1, hud.step)}/4 · ⏱ {Math.floor(hud.stepIn / 60)}:{String(Math.floor(hud.stepIn % 60)).padStart(2, '0')}</span>
             </div>
             <div>
               <div className="flex justify-between text-[10px] text-slate-400 mb-0.5"><span>ЦЕЛОСТНОСТЬ БУНКЕРА</span><span>{pct}%</span></div>
@@ -562,12 +565,13 @@ export const Proto3D: React.FC = () => {
                 <div className={`h-full transition-[width] duration-100 ${critical ? 'bg-red-500' : pct < 60 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} />
               </div>
             </div>
+            {!hud.msg && hud.incs.length === 0 && <div className="text-[11px] px-2 py-1 rounded bg-slate-900/80 border border-slate-600 text-slate-400 w-fit max-w-full">Идёт обсуждение. Новая катастрофа — при смене шага</div>}
             {hud.msg && <div className="text-[11px] px-2 py-1 rounded bg-slate-900/90 border border-amber-500/60 text-amber-200 w-fit max-w-full">{hud.msg}</div>}
             <div className="flex flex-col gap-1">
               {hud.incs.map(i => (
                 <div key={i.id} className={`px-2 py-1 rounded border text-[10px] leading-tight bg-slate-900/85 ${i.critical ? 'border-red-500' : 'border-slate-600'}`}>
                   <div className="flex items-center gap-1.5">
-                    <span>{i.icon}</span><span className="font-bold text-slate-100 truncate">{i.title}</span>
+                    <span>{i.icon}</span><span className="font-bold text-slate-100">{i.title}</span>
                     <span className="ml-auto text-slate-400 whitespace-nowrap">👥{i.workers}</span>
                   </div>
                   <div className="text-slate-400">{i.room}</div>
@@ -583,7 +587,7 @@ export const Proto3D: React.FC = () => {
               {ROOMS.map(r => (
                 <g key={r.id}>
                   <rect x={r.x0 + 0.2} y={r.z0 + 0.2} width={CW - 0.4} height={CD - 0.4} fill="#0f172a" stroke="#475569" strokeWidth={0.25} />
-                  <text x={r.cx} y={r.cz + 0.4} fontSize={1.9} textAnchor="middle" fill="#64748b">{r.name.split(' ')[0]}</text>
+                  <text x={r.cx} y={r.cz + 0.4} fontSize={1.45} textAnchor="middle" fill="#64748b">{r.name.split(' ')[0]}</text>
                 </g>
               ))}
               {hud.incs.map(i => {
@@ -594,13 +598,13 @@ export const Proto3D: React.FC = () => {
             </svg>
             <div className="mt-1 flex flex-col gap-0.5 text-[9px] bg-slate-900/80 border border-slate-700 rounded p-1" style={{ width: COLS * CW * mm }}>
               {hud.bots.map(b => (
-                <div key={b.id} className="flex items-center gap-1">
+                <div key={b.id} className="flex flex-wrap items-center gap-x-1 leading-tight">
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ background: hex(b.color) }} />
                   <span className="text-slate-200">{b.name}</span>
-                  <span className="text-slate-500 truncate">{b.prof}</span>
                   <span className={`ml-auto whitespace-nowrap ${b.state === 'panic' ? 'text-red-400' : b.state === 'work' ? 'text-emerald-400' : b.state === 'goto' ? 'text-amber-300' : 'text-slate-500'}`}>
                     {b.state === 'panic' ? 'паника' : b.state === 'work' ? 'чинит' : b.state === 'goto' ? 'бежит' : 'ждёт'}{b.exp > 0 ? ` ★${Math.round(b.exp * 10)}` : ''}
                   </span>
+                  <span className="basis-full pl-3 text-slate-500">{b.prof}</span>
                 </div>
               ))}
             </div>
@@ -660,7 +664,7 @@ export const Proto3D: React.FC = () => {
               <a href="/" className="px-2 py-1 text-[11px] border border-slate-600 bg-slate-900/80 rounded hover:border-amber-500">← В игру</a>
               <h1 className="text-amber-400 font-black tracking-wider text-lg">БУНКЕР 3D · АЛЬФА</h1>
             </div>
-            <p className="text-xs text-slate-400 mb-4">Выживи смену в большом бункере: аварии из сценариев игры, твои карты дают навыки, а боты сами бегут на помощь. Можно позвать их кнопкой.</p>
+            <p className="text-xs text-slate-400 mb-4">Четыре шага партии: между ними идёт обсуждение, а катастрофа случается только при смене шага. Твои карты дают навыки, боты сами бегут на помощь, а позвать их можно кнопкой.</p>
 
             <div className="text-[11px] text-slate-400 uppercase tracking-widest mb-1.5">1. Бункер</div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-1.5 mb-4">
@@ -699,7 +703,7 @@ export const Proto3D: React.FC = () => {
       {phase === 'end' && result && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/70 p-4">
           <div className={`p-6 border bg-slate-950 text-center max-w-xs w-full ${result.win ? 'border-emerald-500' : 'border-red-500'}`}>
-            <div className={`font-black text-lg mb-2 ${result.win ? 'text-emerald-400' : 'text-red-400'}`}>{result.win ? 'СМЕНА ПРОЙДЕНА' : 'БУНКЕР ПОТЕРЯН'}</div>
+            <div className={`font-black text-lg mb-2 ${result.win ? 'text-emerald-400' : 'text-red-400'}`}>{result.win ? 'ВСЕ ШАГИ ПРОЙДЕНЫ' : 'БУНКЕР ПОТЕРЯН'}</div>
             <div className="text-xs text-slate-300 space-y-1 mb-4">
               <div>Аварий устранено: <b className="text-slate-100">{result.fixed}</b></div>
               <div>Целостность: <b className="text-slate-100">{result.integrity}%</b></div>
