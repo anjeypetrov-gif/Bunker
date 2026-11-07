@@ -8,6 +8,7 @@ export interface World {
   hemi: THREE.HemisphereLight;
   sun: THREE.DirectionalLight;
   roomFloors: Record<string, THREE.Mesh>;
+  update: (t: number) => void;
   dispose: () => void;
 }
 
@@ -60,6 +61,10 @@ export function buildWorld(scene: THREE.Scene, theme: Theme): World {
   const hemi = new THREE.HemisphereLight(0xb4c4dc, 0x2a2018, 1.3);
   const sun = new THREE.DirectionalLight(theme.lamp, 0.75);
   sun.position.set(6, 22, 8);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -27, right: 27, top: 19, bottom: -19, near: 1, far: 70 });
+  sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.03;
   group.add(hemi, sun);
 
   const wallMat = tmat(theme.wall, 'wall-panel', tintOf(theme.wall, 0.55), 3, 0.8, 0.15);
@@ -329,8 +334,33 @@ export function buildWorld(scene: THREE.Scene, theme: Theme): World {
   };
   ROOMS.forEach(r => props[r.id]?.(r));
 
+  // тени: пол только принимает, остальное и отбрасывает
+  group.traverse(o => {
+    if (o instanceof THREE.Mesh && !(o.material instanceof THREE.MeshBasicMaterial)) { o.castShadow = true; o.receiveShadow = true; }
+  });
+  Object.values(roomFloors).forEach(f => { f.castShadow = false; });
+
+  // пылинки в свете ламп
+  const DN = 240;
+  const dpos = new Float32Array(DN * 3), dbase = new Float32Array(DN * 3);
+  for (let i = 0; i < DN; i++) {
+    dbase[i * 3] = (Math.random() - 0.5) * CW * 3; dbase[i * 3 + 1] = 0.6 + Math.random() * 2.2; dbase[i * 3 + 2] = (Math.random() - 0.5) * CD * 3;
+  }
+  const dg = new THREE.BufferGeometry(); dg.setAttribute('position', new THREE.BufferAttribute(dpos, 3)); geos.push(dg);
+  const dm = new THREE.PointsMaterial({ color: 0xffe2b0, size: 0.07, transparent: true, opacity: 0.55, depthWrite: false, sizeAttenuation: true }); mats.push(dm);
+  group.add(new THREE.Points(dg, dm));
+  const update = (t: number) => {
+    for (let i = 0; i < DN; i++) {
+      dpos[i * 3] = dbase[i * 3] + Math.sin(t * 0.13 + i) * 0.6;
+      dpos[i * 3 + 1] = dbase[i * 3 + 1] + Math.sin(t * 0.25 + i * 1.7) * 0.25;
+      dpos[i * 3 + 2] = dbase[i * 3 + 2] + Math.cos(t * 0.11 + i * 0.6) * 0.6;
+    }
+    (dg.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+  };
+  update(0);
+
   return {
-    group, hemi, sun, roomFloors,
+    group, hemi, sun, roomFloors, update,
     dispose: () => {
       scene.remove(group);
       clearObstacles();

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { THEMES, BOT_SAY, cardType, type Theme } from '../proto3d/data';
 import { buildWorld, type World } from '../proto3d/world';
-import { makeHuman, animate, makeBubble, say, tickBubble, makeLabel, type Human, type Bubble } from '../proto3d/humans';
+import { makeHuman, dress, animate, makeBubble, say, tickBubble, makeLabel, type Human, type Bubble } from '../proto3d/humans';
 import { ROOMS, roomById, findPath, collide, freePoint, type Pt } from '../proto3d/layout';
 import { getCardArt } from '../data/cardArt';
 import { RES_META, type Res, type ResKey } from './events';
@@ -17,7 +17,7 @@ const SHIRTS = [0x4d78a6, 0xb85a7a, 0x6f8f5e, 0x8a6fb0, 0xc9803a, 0x4f9a9a, 0xa0
 const HAIR = [0x3a2a1c, 0xc9b27a, 0x1b1b1b, 0x6b3b1e, 0xd8c7a0, 0x5a4636];
 const SKIN = [0xd9b89a, 0xc99c7c, 0xe2c2a2, 0xe8cfb2];
 
-interface Actor { id: number; h: Human; bubble: Bubble; label: THREE.Sprite; path: Pt[]; wait: number; work: number; prev: Pt; stuck: number }
+interface Actor { bed: { x: number; z: number; ry: number } | null; inBed: boolean; id: number; h: Human; bubble: Bubble; label: THREE.Sprite; path: Pt[]; wait: number; work: number; prev: Pt; stuck: number }
 interface SceneApi {
   setTheme: (id: string) => void;
   sync: (rs: Resident[]) => void;
@@ -26,6 +26,7 @@ interface SceneApi {
   send: (id: number, roomId: string, work?: boolean) => void;
   say: (id: number, text: string) => void;
   reset: () => void;
+  sleep: (on: boolean) => void;
 }
 
 const art = (type: 'profession' | 'baggage', title: string) => getCardArt(cardType(type), title);
@@ -75,6 +76,8 @@ export default function Chronicle() {
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x07090d);
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     mount.appendChild(renderer.domElement);
     const dom = renderer.domElement;
     dom.style.touchAction = 'none';
@@ -104,14 +107,15 @@ export default function Chronicle() {
     const spawnPt = () => { const r = roomById('hub'); return { x: r.cx + rnd(-4, 4), z: r.cz + rnd(-1, 2.5) }; };
 
     const addActor = (r: Resident) => {
-      const h = makeHuman(scene, SHIRTS[r.id % SHIRTS.length], 0x2d3138, HAIR[(r.id * 3) % HAIR.length], SKIN[r.id % SKIN.length]);
+      const h = makeHuman(scene, SHIRTS[r.id % SHIRTS.length], 0x2d3138, HAIR[(r.id * 3) % HAIR.length], SKIN[r.id % SKIN.length], { female: r.female, style: r.id % 3 });
+      dress(h, r.prof);
       const bubble = makeBubble(h.group, 3.0);
       const label = makeLabel(r.name, 2.4, 0.5, 'bold 44px sans-serif', '#f1f5f9', 'rgba(10,14,20,0.6)');
       label.position.y = 2.5;
       h.group.add(label);
       const p = spawnPt();
       h.group.position.set(p.x, 0, p.z);
-      actors.set(r.id, { id: r.id, h, bubble, label, path: [], wait: rnd(0.2, 2), work: 0, prev: p, stuck: 0 });
+      actors.set(r.id, { id: r.id, h, bubble, label, path: [], wait: rnd(0.2, 2), work: 0, prev: p, stuck: 0, bed: null, inBed: false });
     };
     const removeActor = (id: number) => {
       const a = actors.get(id); if (!a) return;
@@ -157,7 +161,27 @@ export default function Chronicle() {
         a.wait = work ? 0 : rnd(6, 9); a.work = 0; (a as Actor & { goWork?: boolean }).goWork = work;
       },
       say: (id, text) => { const a = actors.get(id); if (a) say(a.bubble, text, 3.2); },
-      reset: () => { [...actors.keys()].forEach(removeActor); }
+      reset: () => { [...actors.keys()].forEach(removeActor); },
+      sleep: (on) => {
+        if (!on) {
+          actors.forEach(a => {
+            if (!a.bed) return;
+            const q = freePoint(a.bed.x + 1.6, a.bed.z + 1.6, 0.6);
+            a.h.group.position.set(q.x, 0, q.z); a.h.group.rotation.y = 0; a.bed = null; a.inBed = false; a.path = []; a.wait = rnd(0.5, 2.5);
+          });
+          return;
+        }
+        const hub = roomById('hub'), med = roomById('medical');
+        const beds = [-3.5, -2.1, 2.1, 3.5].map(dz => ({ x: hub.cx - 4.8, z: hub.cz + dz, ry: Math.PI / 2 }))
+          .concat([-5.2, -3.4, 2.6].map(dx => ({ x: med.cx + dx, z: med.cz - 3.1, ry: 0 })));
+        let i = 0;
+        [...actors.values()].sort((x, y) => x.id - y.id).forEach(a => {
+          const bed = beds[i++ % beds.length];
+          a.bed = bed; a.inBed = false; a.work = 0; (a as Actor & { goWork?: boolean }).goWork = false; a.wait = 0;
+          const near = freePoint(bed.x + (bed.ry ? 1.9 : 0), bed.z + (bed.ry ? 0 : 1.9), 0.6);
+          a.path = findPath({ x: a.h.group.position.x, z: a.h.group.position.z }, near);
+        });
+      }
     };
 
     // управление камерой
@@ -188,6 +212,18 @@ export default function Chronicle() {
         const g = a.h.group;
         const ext = a as Actor & { goWork?: boolean };
         tickBubble(a.bubble, dt);
+        if (a.bed) {
+          if (!a.inBed && !a.path.length) {
+            a.inBed = true;
+            g.rotation.y = a.bed.ry;
+            g.position.set(a.bed.x + Math.sin(a.bed.ry) * 0.95, 0.8, a.bed.z + Math.cos(a.bed.ry) * 0.95);
+          }
+          if (a.inBed) {
+            animate(a.h, 0, t, false, false, false, true);
+            if (Math.random() < dt * 0.12) say(a.bubble, 'Zzz…', 2.5);
+            return;
+          }
+        }
         if (a.work > 0) {
           a.work -= dt; animate(a.h, 0, t, true); a.h.wrench.visible = true;
           if (a.work <= 0) { a.h.wrench.visible = false; a.wait = rnd(1, 3); }
@@ -196,7 +232,7 @@ export default function Chronicle() {
         if (!a.path.length) {
           if (ext.goWork) { ext.goWork = false; a.work = 4.5; return; }
           a.wait -= dt;
-          animate(a.h, 0, t);
+          animate(a.h, 0, t, false, false, a.bubble.sp.visible);
           if (a.wait <= 0) {
             const room = ROOMS[Math.floor(Math.random() * ROOMS.length)];
             const to = freePoint(room.cx + rnd(-4.5, 4.5), room.cz + rnd(-2.2, 2.6), 0.6);
@@ -223,7 +259,7 @@ export default function Chronicle() {
         }
         let dr = Math.atan2(dx, dz) - g.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
         g.rotation.y += dr * Math.min(1, dt * 10);
-        animate(a.h, sp, t);
+        animate(a.h, sp, t, false, false, false);
         a.h.wrench.visible = false;
       });
       // маяк события
@@ -241,6 +277,7 @@ export default function Chronicle() {
       tmp.set(cam.tx + Math.sin(cam.yaw) * cp * d, Math.sin(cam.pitch) * d + 0.8, cam.tz + Math.cos(cam.yaw) * cp * d);
       camera.position.copy(tmp);
       camera.lookAt(cam.tx, 1.0, cam.tz);
+      world.update(t);
       renderer.render(scene, camera);
     };
     tick();
@@ -270,6 +307,7 @@ export default function Chronicle() {
 
   // ---------- ход игры ----------
   const nextEvent = (s: State) => {
+    api.current?.sleep(false);
     const p = pickEvent(s);
     setPicked(p); setResult(null); setNight(null); setPhase('event');
     api.current?.focus(p.ev.room);
@@ -304,7 +342,7 @@ export default function Chronicle() {
 
   const goNight = () => {
     if (!state) return;
-    api.current?.beacon(null); api.current?.focus(null);
+    api.current?.beacon(null); api.current?.focus(null); api.current?.sleep(true);
     const n = endDay(state);
     api.current?.sync(state.residents);
     setNight(n); setPhase('night'); bump();
@@ -312,14 +350,14 @@ export default function Chronicle() {
 
   const nextDay = () => {
     if (!state || !night) return;
-    if (night.ended) { setPhase('end'); api.current?.focus(null); bump(); return; }
+    if (night.ended) { setPhase('end'); api.current?.sleep(false); api.current?.focus(null); bump(); return; }
     nextEvent(state);
   };
 
   const again = () => {
     const g = newGame(themeId);
     setDraft(g.residents); setState(null); setPicked(null); setResult(null); setNight(null);
-    api.current?.reset(); api.current?.sync(g.residents); api.current?.focus(null); api.current?.beacon(null);
+    api.current?.sleep(false); api.current?.reset(); api.current?.sync(g.residents); api.current?.focus(null); api.current?.beacon(null);
     setPhase('setup'); setShowLog(false);
   };
 

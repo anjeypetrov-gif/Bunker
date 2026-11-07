@@ -7,7 +7,7 @@ import {
 } from './data';
 import { ROOMS, roomById, roomAt, collide, findPath, freePoint, pathLength, MAP_X0, MAP_Z0, COLS, ROWS, CW, CD, type Pt } from './layout';
 import { buildWorld, type World } from './world';
-import { makeHuman, animate, makeBubble, say, tickBubble, makeLabel, type Human, type Bubble } from './humans';
+import { makeHuman, dress, animate, makeBubble, say, tickBubble, makeLabel, type Human, type Bubble } from './humans';
 
 /**
  * Прототип «Бункер 3D · альфа»: большой бункер из 9 отсеков, аварии из сценариев игры,
@@ -87,6 +87,8 @@ export const Proto3D: React.FC = () => {
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x07090d);
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     mount.appendChild(renderer.domElement);
     const dom = renderer.domElement;
     dom.style.touchAction = 'none';
@@ -117,7 +119,7 @@ export const Proto3D: React.FC = () => {
 
     // ---------- Люди ----------
     const mkActor = (id: string, name: string, shirt: number, pants: number, hair: number, skin: number, isBot: boolean): Actor => {
-      const h = makeHuman(scene, shirt, pants, hair, skin);
+      const h = makeHuman(scene, shirt, pants, hair, skin, { female: id === 'b1' || id === 'b3', style: id.length + (id.charCodeAt(id.length - 1) % 3) });
       const bubble = makeBubble(h.group, 2.9);
       return { id, name, prof: '', bag: [], color: shirt, h, bubble, exp: {}, state: 'idle', path: [], target: null, wanderT: 1, isBot, prev: { x: 0, z: 0 }, workSay: 0 };
     };
@@ -139,6 +141,7 @@ export const Proto3D: React.FC = () => {
       const pool = PROFESSIONS.filter(p => p !== playerProf).sort(() => Math.random() - 0.5);
       bots.forEach((b, i) => {
         b.prof = pool[i];
+        dress(b.h, b.prof);
         const related = Object.values(INCIDENTS).filter(d => d.pros.includes(b.prof)).flatMap(d => d.tools);
         const first = related.length && Math.random() < 0.75 ? rnd(related) : rnd(BAGGAGE);
         const second = rnd(BAGGAGE);
@@ -253,6 +256,7 @@ export const Proto3D: React.FC = () => {
       if (theme.id !== o.themeId) applyTheme(o.themeId);
       resetSim();
       me.prof = o.prof; me.bag = o.bag; me.exp = {};
+      dress(me.h, o.prof);
       giveBotLoadouts(o.prof);
       place(me, hub.cx, hub.cz + 1.5); spreadBots();
       S.running = true;
@@ -349,7 +353,7 @@ export const Proto3D: React.FC = () => {
           if (b.workSay <= 0) { say(b.bubble, rnd(BOT_SAY.work), 1.6); b.workSay = 5 + Math.random() * 4; }
         }
       }
-      animate(b.h, moved / Math.max(dt, 0.001) * 0.0165, S.clock, working, b.state === 'panic');
+      animate(b.h, moved / Math.max(dt, 0.001) * 0.0165, S.clock, working, b.state === 'panic', b.bubble.sp.visible);
     };
 
     const tick = () => {
@@ -485,6 +489,7 @@ export const Proto3D: React.FC = () => {
       tmp.set(mp.position.x + Math.sin(cam.yaw) * cp * d, Math.sin(cam.pitch) * d + 0.8, mp.position.z + Math.cos(cam.yaw) * cp * d);
       camera.position.lerp(tmp, 1 - Math.pow(0.0005, dt));
       camera.lookAt(mp.position.x, 1.0, mp.position.z);
+      world.update(S.clock);
       renderer.render(scene, camera);
 
       // HUD
