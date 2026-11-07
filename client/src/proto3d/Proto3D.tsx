@@ -5,7 +5,7 @@ import {
   PROFESSIONS, BAGGAGE, INCIDENTS, THEMES, BOT_NAMES, BOT_SAY, cardType,
   type IncidentType, type IncidentDef, type Theme
 } from './data';
-import { ROOMS, roomById, roomAt, collide, findPath, pathLength, MAP_X0, MAP_Z0, COLS, ROWS, CW, CD, type Pt } from './layout';
+import { ROOMS, roomById, roomAt, collide, findPath, freePoint, pathLength, MAP_X0, MAP_Z0, COLS, ROWS, CW, CD, type Pt } from './layout';
 import { buildWorld, type World } from './world';
 import { makeHuman, animate, makeBubble, say, tickBubble, makeLabel, type Human, type Bubble } from './humans';
 
@@ -195,7 +195,7 @@ export const Proto3D: React.FC = () => {
     const spot = (inc: Inc, k: number): Pt => {
       const st = roomById(inc.roomId).station;
       const ang = k * 2.2 + 0.6;
-      return { x: st.x + Math.cos(ang) * 1.25, z: st.z + Math.sin(ang) * 1.25 };
+      return freePoint(st.x + Math.cos(ang) * 1.25, st.z + Math.sin(ang) * 1.25, 0.6);
     };
     const sendBot = (b: Actor, inc: Inc, k: number) => {
       b.state = 'goto'; b.target = inc.id;
@@ -317,7 +317,12 @@ export const Proto3D: React.FC = () => {
         if (d < 0.22) b.path.shift();
         else {
           const st = Math.min(d, speed * dt);
-          g.position.x += (dx / d) * st; g.position.z += (dz / d) * st;
+          const cb = collide(g.position.x + (dx / d) * st, g.position.z + (dz / d) * st, 0.4);
+          const real = Math.hypot(cb.x - g.position.x, cb.z - g.position.z);
+          g.position.x = cb.x; g.position.z = cb.z;
+          const bs = b as Actor & { stuck?: number };
+          bs.stuck = real < st * 0.3 ? (bs.stuck || 0) + dt : 0;
+          if ((bs.stuck || 0) > 0.8) { bs.stuck = 0; b.path = findPath({ x: g.position.x, z: g.position.z }, b.path[b.path.length - 1]); }
           const tr = Math.atan2(dx, dz);
           let dr = tr - g.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
           g.rotation.y += dr * Math.min(1, dt * 12);
@@ -329,7 +334,7 @@ export const Proto3D: React.FC = () => {
         b.wanderT -= dt;
         if (b.wanderT <= 0) {
           const r = b.state === 'panic' ? rnd(ROOMS) : (Math.random() < 0.5 ? hub : rnd(ROOMS));
-          b.path = findPath({ x: g.position.x, z: g.position.z }, { x: r.cx + (Math.random() - 0.5) * 7, z: r.cz + (Math.random() - 0.5) * 4 });
+          b.path = findPath({ x: g.position.x, z: g.position.z }, freePoint(r.cx + (Math.random() - 0.5) * 7, r.cz + (Math.random() - 0.5) * 4, 0.6));
           b.wanderT = b.state === 'panic' ? 1 + Math.random() * 2 : 5 + Math.random() * 7;
           if (b.state === 'panic' && Math.random() < 0.6) say(b.bubble, rnd(BOT_SAY.panic), 2);
         }

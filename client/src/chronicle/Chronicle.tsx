@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { THEMES, BOT_SAY, cardType, type Theme } from '../proto3d/data';
 import { buildWorld, type World } from '../proto3d/world';
 import { makeHuman, animate, makeBubble, say, tickBubble, makeLabel, type Human, type Bubble } from '../proto3d/humans';
-import { ROOMS, roomById, roomAt, findPath, collide, type Pt } from '../proto3d/layout';
+import { ROOMS, roomById, findPath, collide, freePoint, type Pt } from '../proto3d/layout';
 import { getCardArt } from '../data/cardArt';
 import { RES_META, type Res, type ResKey } from './events';
 import {
@@ -17,7 +17,7 @@ const SHIRTS = [0x4d78a6, 0xb85a7a, 0x6f8f5e, 0x8a6fb0, 0xc9803a, 0x4f9a9a, 0xa0
 const HAIR = [0x3a2a1c, 0xc9b27a, 0x1b1b1b, 0x6b3b1e, 0xd8c7a0, 0x5a4636];
 const SKIN = [0xd9b89a, 0xc99c7c, 0xe2c2a2, 0xe8cfb2];
 
-interface Actor { id: number; h: Human; bubble: Bubble; label: THREE.Sprite; path: Pt[]; wait: number; work: number; prev: Pt }
+interface Actor { id: number; h: Human; bubble: Bubble; label: THREE.Sprite; path: Pt[]; wait: number; work: number; prev: Pt; stuck: number }
 interface SceneApi {
   setTheme: (id: string) => void;
   sync: (rs: Resident[]) => void;
@@ -111,7 +111,7 @@ export default function Chronicle() {
       h.group.add(label);
       const p = spawnPt();
       h.group.position.set(p.x, 0, p.z);
-      actors.set(r.id, { id: r.id, h, bubble, label, path: [], wait: rnd(0.2, 2), work: 0, prev: p });
+      actors.set(r.id, { id: r.id, h, bubble, label, path: [], wait: rnd(0.2, 2), work: 0, prev: p, stuck: 0 });
     };
     const removeActor = (id: number) => {
       const a = actors.get(id); if (!a) return;
@@ -199,7 +199,7 @@ export default function Chronicle() {
           animate(a.h, 0, t);
           if (a.wait <= 0) {
             const room = ROOMS[Math.floor(Math.random() * ROOMS.length)];
-            const to = { x: room.cx + rnd(-4.5, 4.5), z: room.cz + rnd(-2.2, 2.6) };
+            const to = freePoint(room.cx + rnd(-4.5, 4.5), room.cz + rnd(-2.2, 2.6), 0.6);
             a.path = findPath({ x: g.position.x, z: g.position.z }, to);
             a.wait = rnd(2, 6);
           }
@@ -212,7 +212,15 @@ export default function Chronicle() {
         if (dist < 0.25) { a.path.shift(); return; }
         const nx = g.position.x + (dx / dist) * Math.min(sp, dist), nz = g.position.z + (dz / dist) * Math.min(sp, dist);
         const c = collide(nx, nz, 0.4);
+        const moved = Math.hypot(c.x - g.position.x, c.z - g.position.z);
         g.position.x = c.x; g.position.z = c.z;
+        a.stuck = moved < sp * 0.3 ? a.stuck + dt : 0;
+        if (a.stuck > 0.8) { // упёрся: перестроить путь к последней цели
+          a.stuck = 0;
+          const last = a.path[a.path.length - 1];
+          a.path = findPath({ x: g.position.x, z: g.position.z }, last);
+          if (a.path.length > 1 && Math.random() < 0.5) a.path.shift();
+        }
         let dr = Math.atan2(dx, dz) - g.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
         g.rotation.y += dr * Math.min(1, dt * 10);
         animate(a.h, sp, t);
