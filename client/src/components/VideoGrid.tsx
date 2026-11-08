@@ -120,9 +120,9 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
   const playerList = Object.values(players);
   // Режим отображения: «список» — один игрок в строке, справа видны все раскрытые им карты.
   const [rows, setRowsState] = useState<boolean>(() => {
-    try { return localStorage.getItem('bunker-video-rows') !== '0'; } catch { return true; }
+    try { return localStorage.getItem('bunker-video-list') === '1'; } catch { return false; }
   });
-  const setRows = (v: boolean) => { setRowsState(v); try { localStorage.setItem('bunker-video-rows', v ? '1' : '0'); } catch { /* */ } };
+  const setRows = (v: boolean) => { setRowsState(v); try { localStorage.setItem('bunker-video-list', v ? '1' : '0'); } catch { /* */ } };
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-slate-900/80 border border-slate-800 notch p-2.5 md:p-3.5 shadow-2xl">
@@ -133,7 +133,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
 
         <button
           onClick={() => setRows(!rows)}
-          title={rows ? 'Показать плиткой' : 'Показать списком: видно все карты игроков'}
+          title={rows ? 'Показать плиткой' : 'Показать списком: карты рядом с аватаром'}
           className="ml-auto mr-2 md:ml-0 md:mr-0 p-1.5 px-2.5 notch-sm text-[11px] font-mono font-semibold bg-slate-800 text-slate-200 hover:bg-slate-700 cursor-pointer border border-slate-700 whitespace-nowrap"
         >
           {rows ? '▦ ПЛИТКОЙ' : '☰ СПИСКОМ'}
@@ -164,7 +164,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
       </div>
 
       {/* Grid of Players */}
-      <div className={`flex-1 min-h-0 grid gap-2.5 overflow-y-auto pr-1 content-start auto-rows-max ${rows ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'}`}>
+      <div className={`flex-1 min-h-0 grid gap-2.5 overflow-y-auto pr-1 content-start auto-rows-max ${rows ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1 md:grid-cols-3 lg:grid-cols-4'}`}>
         {playerList.map(player => {
           const isSelf = player.id === currentSocketId;
           const remoteStream = remoteStreams[player.id];
