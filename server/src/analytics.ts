@@ -7,7 +7,8 @@ import { DATA_DIR } from './stats';
 // Хранятся только анонимные данные: IP не сохраняется (только страна/город, определённые на лету),
 // посетитель — случайный id из браузера, дополнительно «посолен» на сервере.
 
-export type EvKind = 'visit' | 'room' | 'join' | 'start' | 'over' | 'error' | 'rtc';
+export type EvKind = 'visit' | 'room' | 'join' | 'start' | 'over' | 'error' | 'rtc' | 'choice';
+export type Mode = 'classic' | 'chronicle' | '3d';
 
 export interface Ev {
   t: number;          // unix ms
@@ -30,6 +31,16 @@ export interface Ev {
   sv?: number;        // шанс выживания, %
   fail?: boolean;     // провальная партия (шанс < 40%)
   ok?: boolean;       // для rtc: связь установлена
+  mode?: Mode;        // режим игры; нет поля = классический
+  th?: string;        // тема/сценарий (Хроника, 3D)
+  prof?: string;      // профессия (3D)
+  res?: string;       // итог: вердикт Хроники / win|lose в 3D
+  g?: number;         // оценка итога (Хроника 0..3)
+  sc?: number;        // очки (3D)
+  fx?: number;        // 3D: починено аварий; Хроника: выжило жителей
+  evid?: string;      // Хроника: id события
+  ch?: number;        // Хроника: номер выбранного варианта
+  win?: boolean;      // успешен ли выбор / победа
 }
 
 const FILE = path.join(DATA_DIR, 'events.jsonl');
@@ -127,6 +138,8 @@ function nextKey(k: number, bucket: Bucket, off: number): number {
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) - off;
 }
 
+const modeOf = (e: Ev): Mode => e.mode || 'classic';
+
 const countBy = <T>(arr: T[], f: (x: T) => string | undefined, top = 15) => {
   const m = new Map<string, number>();
   for (const x of arr) { const k = f(x); if (k) m.set(k, (m.get(k) || 0) + 1); }
@@ -176,9 +189,11 @@ export function report(from: number, to: number, bucketIn: Bucket | 'auto', tzMi
   const effSpan = Math.max(1, to - sFrom);
   const bucket: Bucket = bucketIn !== 'auto' ? bucketIn
     : effSpan <= 2 * DAY ? 'hour' : effSpan <= 60 * DAY ? 'day' : effSpan <= 200 * DAY ? 'week' : 'month';
-  const inRange = events.filter(e => e.t >= from && e.t <= to);
+  // общий отчёт: игровые события только классического режима (альфа-режимы — в modesReport)
+  const classicOnly = (e: Ev) => !(e.mode && (e.k === 'start' || e.k === 'over' || e.k === 'choice'));
+  const inRange = events.filter(e => e.t >= from && e.t <= to && classicOnly(e));
   const span = Math.max(1, to - from);
-  const prevList = events.filter(e => e.t >= from - span && e.t < from);
+  const prevList = events.filter(e => e.t >= from - span && e.t < from && classicOnly(e));
 
   // ряд по периодам (с нулями в пустых интервалах)
   const maxBuckets = 400;
@@ -234,4 +249,93 @@ export function report(from: number, to: number, bucketIn: Bucket | 'auto', tzMi
     eventsTotal: events.length,
     firstEventAt: events.length ? events[0].t : null
   };
+}
+
+
+// ---------- статистика по режимам ----------
+const avgOf = (a: number[]) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);
+
+function modeTotals(list: Ev[], mode: Mode) {
+  const L = list.filter(e => modeOf(e) === mode);
+  const visits = L.filter(e => e.k === 'visit');
+  const vids = new Set(visits.map(e => e.vid).filter(Boolean));
+  const starts = L.filter(e => e.k === 'start');
+  const overs = L.filter(e => e.k === 'over');
+  return {
+    visits: visits.length, uniques: vids.size, starts: starts.length, overs: overs.length,
+    completionPct: starts.length ? Math.min(100, (100 * overs.length) / starts.length) : 0,
+    avgDurationMin: avgOf(overs.map(e => (e.d || 0) / 60)),
+    avgRounds: avgOf(overs.map(e => e.r || 0)),
+    avgPlayers: avgOf(starts.map(e => e.n || 0)),
+    avgSurvivors: avgOf(overs.filter(e => e.fx != null).map(e => e.fx as number)),
+    avgScore: avgOf(overs.filter(e => e.sc != null).map(e => e.sc as number)),
+    winPct: overs.length ? (100 * overs.filter(e => e.win).length) / overs.length : 0,
+    avgSurvival: avgOf(overs.filter(e => e.sv != null).map(e => e.sv as number)),
+    errors: L.filter(e => e.k === 'error').length
+  };
+}
+
+export function modesReport(from: number, to: number, bucketIn: Bucket | 'auto', tzMin: number) {
+  const off = tzMin * 60000;
+  const span = Math.max(1, to - from);
+  const inRange = events.filter(e => e.t >= from && e.t <= to);
+  const prevList = events.filter(e => e.t >= from - span && e.t < from);
+  const sFrom = Math.max(from, events.length ? events[0].t : to - DAY);
+  const effSpan = Math.max(1, to - sFrom);
+  const bucket: Bucket = bucketIn !== 'auto' ? bucketIn
+    : effSpan <= 2 * DAY ? 'hour' : effSpan <= 60 * DAY ? 'day' : effSpan <= 200 * DAY ? 'week' : 'month';
+  const modes: Mode[] = ['classic', 'chronicle', '3d'];
+  const out: Record<string, any> = {};
+
+  // ряд: заходы и старты партий по режимам
+  const keys: number[] = [];
+  const idx = new Map<number, number>();
+  let k = bucketKey(sFrom, bucket, off);
+  while (k <= to && keys.length < 400) { idx.set(k, keys.length); keys.push(k); k = nextKey(k, bucket, off); }
+
+  for (const m of modes) {
+    const L = inRange.filter(e => modeOf(e) === m);
+    const starts = L.filter(e => e.k === 'start');
+    const overs = L.filter(e => e.k === 'over');
+    const series = keys.map(t => ({ t, visits: 0, starts: 0, overs: 0 }));
+    for (const e of L) {
+      const i = idx.get(bucketKey(e.t, bucket, off)); if (i === undefined) continue;
+      if (e.k === 'visit') series[i].visits++; else if (e.k === 'start') series[i].starts++; else if (e.k === 'over') series[i].overs++;
+    }
+    const o: Record<string, any> = {
+      totals: modeTotals(inRange, m), prev: modeTotals(prevList, m), series
+    };
+    if (m === 'classic') {
+      o.catastrophes = countBy(starts, e => e.cat);
+      o.shelters = countBy(starts, e => e.sh);
+      const hist: Record<string, number> = {};
+      for (const e of starts) { const n = String(e.n || 0); hist[n] = (hist[n] || 0) + 1; }
+      o.playersHist = hist;
+    } else if (m === 'chronicle') {
+      o.themes = countBy(starts, e => e.th);
+      o.verdicts = countBy(overs, e => e.res);
+      o.daysHist = countBy(overs, e => (e.r != null ? String(e.r) : undefined), 40).sort((a, b) => Number(a.name) - Number(b.name));
+      const ch = L.filter(e => e.k === 'choice');
+      // по событиям: сколько раз выпало, какой вариант выбирают, процент успеха
+      const byEv = new Map<string, { n: number; ok: number; ch: Map<number, number> }>();
+      for (const e of ch) {
+        if (!e.evid) continue;
+        const x = byEv.get(e.evid) || { n: 0, ok: 0, ch: new Map() };
+        x.n++; if (e.win) x.ok++;
+        x.ch.set(e.ch || 0, (x.ch.get(e.ch || 0) || 0) + 1);
+        byEv.set(e.evid, x);
+      }
+      o.events = [...byEv.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 40).map(([id, x]) => ({
+        id, n: x.n, okPct: x.n ? Math.round((100 * x.ok) / x.n) : 0,
+        choices: [...x.ch.entries()].sort((a, b) => a[0] - b[0]).map(([i, n]) => ({ i, n }))
+      }));
+    } else {
+      o.themes = countBy(starts, e => e.th);
+      o.profs = countBy(starts, e => e.prof);
+      o.results = countBy(overs, e => (e.res === 'win' ? 'Все шаги пройдены' : 'Бункер потерян'));
+      o.themeWin = countBy(overs.filter(e => e.win), e => e.th);
+    }
+    out[m] = o;
+  }
+  return { from, to, bucket, modes: out };
 }

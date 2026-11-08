@@ -11,7 +11,7 @@ const Chronicle = React.lazy(() => import('./chronicle/Chronicle'));
 const isChron = new URLSearchParams(window.location.search).has('chronicle');
 const isProto = new URLSearchParams(window.location.search).has('proto3d');
 
-if (!isProto && !isChron) initTelemetry();
+initTelemetry(isChron ? 'chronicle' : isProto ? '3d' : undefined);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

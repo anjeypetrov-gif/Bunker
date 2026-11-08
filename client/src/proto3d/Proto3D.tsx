@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { reportGame } from '../utils/telemetry';
 import * as THREE from 'three';
 import { getCardArt } from '../data/cardArt';
 import {
@@ -154,7 +155,7 @@ export const Proto3D: React.FC = () => {
     // ---------- Состояние ----------
     const S = {
       running: false, t: 0, clock: 0, integrity: 100, score: 0, fixed: 0, step: 0, nextId: 1,
-      msg: 'Выбери бункер и карты, чтобы начать', helpCd: 0, assignT: 0, msgT: 0, incs: [] as Inc[], hudT: 0
+      msg: 'Выбери бункер и карты, чтобы начать', helpCd: 0, assignT: 0, msgT: 0, incs: [] as Inc[], hudT: 0, startedAt: 0
     };
     const setMsg = (m: string, ttl = 4) => { S.msg = m; S.msgT = ttl; };
 
@@ -260,6 +261,8 @@ export const Proto3D: React.FC = () => {
       giveBotLoadouts(o.prof);
       place(me, hub.cx, hub.cz + 1.5); spreadBots();
       S.running = true;
+      S.startedAt = Date.now();
+      reportGame('3d', 'start', { th: (THEMES.find(t => t.id === o.themeId) || THEMES[0]).name, prof: o.prof });
       setMsg('Обсуждение началось. Катастрофа — при смене шага', 5);
       setPhaseRef.current('play');
     };
@@ -271,6 +274,7 @@ export const Proto3D: React.FC = () => {
     const finish = (win: boolean) => {
       S.running = false;
       const score = Math.round(S.fixed * 100 + S.integrity * 5 + (win ? 200 : 0));
+      reportGame('3d', 'over', { th: theme.name, prof: me.prof, res: win ? 'win' : 'lose', win, fx: S.fixed, sc: score, d: Math.round((Date.now() - (S.startedAt || Date.now())) / 1000), r: S.step });
       setResult({ win, fixed: S.fixed, integrity: Math.round(S.integrity), score });
       setPhaseRef.current('end');
       holdRef.current = false;

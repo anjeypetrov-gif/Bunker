@@ -5,6 +5,7 @@ import { buildWorld, type World } from '../proto3d/world';
 import { makeHuman, dress, animate, makeBubble, say, tickBubble, makeLabel, type Human, type Bubble } from '../proto3d/humans';
 import { ROOMS, roomById, findPath, collide, freePoint, type Pt } from '../proto3d/layout';
 import { getCardArt } from '../data/cardArt';
+import { reportGame } from '../utils/telemetry';
 import { RES_META, type Res, type ResKey } from './events';
 import {
   newGame, pickEvent, resolve, endDay, alive, viewChoice, fmt, verdict, chronicleText, newResident,
@@ -62,6 +63,7 @@ export default function Chronicle() {
   const [showLog, setShowLog] = useState(false);
   const [copied, setCopied] = useState(false);
   const [, force] = useState(0);
+  const t0 = useRef(Date.now());
   const bump = () => force(v => v + 1);
 
   const shuffleDraft = () => {
@@ -318,6 +320,8 @@ export default function Chronicle() {
 
   const startGame = () => {
     const s = newGame(themeId, draft.map(r => ({ ...r })));
+    t0.current = Date.now();
+    reportGame('chronicle', 'start', { th: (THEMES.find(t => t.id === themeId) || THEMES[0]).name, n: s.residents.length });
     setState(s); setSel(null);
     api.current?.reset(); api.current?.sync(s.residents);
     nextEvent(s);
@@ -328,6 +332,7 @@ export default function Chronicle() {
     const v = viewChoice(state, picked.ev.choices[i]);
     if (v.locked) return;
     const res = resolve(state, picked, i);
+    reportGame('chronicle', 'choice', { evid: picked.ev.title, ch: i, win: res.success });
     setResult(res); setPhase('result');
     const a = api.current;
     if (a) {
@@ -350,7 +355,10 @@ export default function Chronicle() {
 
   const nextDay = () => {
     if (!state || !night) return;
-    if (night.ended) { setPhase('end'); api.current?.sleep(false); api.current?.focus(null); bump(); return; }
+    if (night.ended) {
+      const v = verdict(state);
+      reportGame('chronicle', 'over', { th: (THEMES.find(t => t.id === state.themeId) || THEMES[0]).name, res: v.title, g: v.grade, r: Math.min(state.day, TOTAL_DAYS), fx: alive(state).length, n: state.residents.length, win: v.grade >= 2, d: Math.round((Date.now() - t0.current) / 1000) });
+      setPhase('end'); api.current?.sleep(false); api.current?.focus(null); bump(); return; }
     nextEvent(state);
   };
 

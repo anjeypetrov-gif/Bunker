@@ -12,7 +12,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { stats, DATA_DIR } from './stats';
 import { loadState, saveState } from './persistence';
-import { track, flushEvents, geoLookup, parseUA, hashVisitor, report, Bucket } from './analytics';
+import { track, flushEvents, geoLookup, parseUA, hashVisitor, report, modesReport, Bucket, Mode } from './analytics';
 import { adminPageHtml } from './adminPage';
 
 const app = express();
@@ -82,7 +82,7 @@ gameEngine.onGameOver = (room) => {
       }).catch(() => {});
     }
   } catch (e) { console.warn('[Story]', e); }
-  track({ k: 'over', sv: room.survivalChance, fail: !!room.gameFailed, r: room.currentRound, d: t0 ? Math.round((Date.now() - t0) / 1000) : undefined });
+  track({ k: 'over', sv: room.survivalChance, fail: !!room.gameFailed, win: !room.gameFailed, r: room.currentRound, d: t0 ? Math.round((Date.now() - t0) / 1000) : undefined });
 };
 registerSocketHandlers(io, gameEngine);
 
@@ -163,7 +163,8 @@ app.post('/api/hit', (req, res) => {
     ret: b.ret === true,
     c: geo.c, city: geo.city, ...ua,
     lang: clip(b.lang, 5).toLowerCase() || undefined,
-    ref: ref || undefined
+    ref: ref || undefined,
+    mode: b.mode === 'chronicle' || b.mode === '3d' ? b.mode : undefined
   });
   res.status(204).end();
 });
@@ -177,6 +178,30 @@ app.post('/api/rtc', (req, res) => {
   h.n += 1; errHits.set('rtc:' + ip, h);
   if (h.n > 30) return res.status(429).end();
   track({ k: 'rtc', ok: req.body?.ok === true });
+  res.status(204).end();
+});
+
+// События альфа-режимов (Хроника бункера, Бункер 3D): старт, конец, выбор в событии
+app.post('/api/game', (req, res) => {
+  const ip = clientIp(req);
+  const now = Date.now();
+  const h = errHits.get('game:' + ip) || { n: 0, reset: now + 60000 };
+  if (now > h.reset) { h.n = 0; h.reset = now + 60000; }
+  h.n += 1; errHits.set('game:' + ip, h);
+  if (h.n > 60) return res.status(429).end();
+  const b = req.body || {};
+  const mode: Mode | null = b.mode === 'chronicle' ? 'chronicle' : b.mode === '3d' ? '3d' : null;
+  const kind = b.kind === 'start' || b.kind === 'over' || b.kind === 'choice' ? b.kind : null;
+  if (!mode || !kind) return res.status(400).end();
+  const num = (v: unknown, max = 1e6) => (Number.isFinite(Number(v)) ? Math.max(0, Math.min(max, Math.round(Number(v)))) : undefined);
+  track({
+    k: kind, mode,
+    vid: b.vid ? hashVisitor(clip(b.vid, 64)) : undefined,
+    th: clip(b.th, 24) || undefined, prof: clip(b.prof, 40) || undefined, res: clip(b.res, 40) || undefined,
+    n: num(b.n, 50), r: num(b.r, 200), d: num(b.d, 86400), g: num(b.g, 10), sc: num(b.sc), fx: num(b.fx, 100),
+    evid: clip(b.evid, 60) || undefined, ch: num(b.ch, 10),
+    win: b.win === true ? true : b.win === false ? false : undefined
+  });
   res.status(204).end();
 });
 
@@ -214,6 +239,16 @@ app.get('/api/admin/report', (req, res) => {
   const bucket = (['hour', 'day', 'week', 'month'].includes(String(req.query.bucket)) ? req.query.bucket : 'auto') as Bucket | 'auto';
   const tz = Math.max(-840, Math.min(840, Number(req.query.tz) || 0));
   res.json(report(from, to, bucket, tz));
+});
+
+app.get('/api/admin/modes', (req, res) => {
+  if (!adminOk(req)) return res.status(404).end();
+  const now = Date.now();
+  const to = Math.min(now, Number(req.query.to) || now);
+  const from = Math.max(0, Number(req.query.from) || to - 7 * 86400000);
+  const bucket = (['hour', 'day', 'week', 'month'].includes(String(req.query.bucket)) ? req.query.bucket : 'auto') as Bucket | 'auto';
+  const tz = Math.max(-840, Math.min(840, Number(req.query.tz) || 0));
+  res.json(modesReport(from, to, bucket, tz));
 });
 
 app.get('/api/admin/live', (req, res) => {

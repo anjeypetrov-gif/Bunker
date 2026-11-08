@@ -16,7 +16,7 @@ export function reportError(message: string, stack?: string) {
   } catch { /* ignore */ }
 }
 
-export function initTelemetry() {
+export function initTelemetry(mode?: 'chronicle' | '3d') {
   window.addEventListener('error', e => reportError(e.message || 'error', e.error?.stack));
   window.addEventListener('unhandledrejection', e => {
     const r: any = e.reason;
@@ -38,7 +38,7 @@ export function initTelemetry() {
       fetch(`${BASE}/api/hit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vid, ret, lang: (navigator.language || '').slice(0, 2), ref: document.referrer || '' })
+        body: JSON.stringify({ vid, ret, lang: (navigator.language || '').slice(0, 2), ref: document.referrer || '', mode })
       }).catch(() => {});
     }
   } catch { /* приватный режим */ }
@@ -51,6 +51,20 @@ export function reportRtc(ok: boolean) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ok })
+    }).catch(() => {});
+  } catch { /* ignore */ }
+}
+
+// События альфа-режимов (Хроника бункера, Бункер 3D): kind = start | over | choice
+export function reportGame(mode: 'chronicle' | '3d', kind: 'start' | 'over' | 'choice', data: Record<string, unknown> = {}) {
+  try {
+    let vid = '';
+    try { vid = localStorage.getItem('bunker:vid') || ''; } catch { /* */ }
+    fetch(`${BASE}/api/game`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, kind, vid, ...data }),
+      keepalive: true
     }).catch(() => {});
   } catch { /* ignore */ }
 }

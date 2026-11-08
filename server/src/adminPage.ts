@@ -47,6 +47,10 @@ th{color:var(--mut);font-weight:500}
 pre{background:#0b1220;padding:8px;overflow:auto;white-space:pre-wrap;margin:6px 0;font-size:12px;border-left:3px solid var(--rd)}
 #tip{position:fixed;pointer-events:none;background:#020617;border:1px solid var(--line);padding:6px 9px;font-size:12px;display:none;z-index:9;white-space:nowrap}
 .empty{color:var(--mut);padding:18px 0;text-align:center}
+.tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.tabs button{background:var(--panel);color:var(--mut);border:1px solid var(--line);padding:8px 14px;font:inherit;cursor:pointer;border-radius:4px}
+.tabs button.on{background:var(--am);color:#111;border-color:var(--am);font-weight:700}
+.alpha{font-size:10px;color:var(--vi);margin-left:4px}
 .note{background:#1c1917;border:1px solid #78350f;color:#fcd34d;padding:8px 12px;margin-bottom:14px;font-size:13px;display:none}
 </style></head><body><div class="wrap">
 <div class="top">
@@ -65,7 +69,9 @@ pre{background:#0b1220;padding:8px;overflow:auto;white-space:pre-wrap;margin:6px
   <label><input type="checkbox" id="auto" checked> обновлять</label>
   <button id="csv">CSV</button>
 </div>
-<div class="kpis" id="kpis"></div>
+<div class="tabs" id="tabs"></div>
+<div id="tabMode" style="display:none"><div class="kpis" id="mKpis"></div><div class="grid" id="mGrid"></div></div>
+<div id="tabAll"><div class="kpis" id="kpis"></div>
 <div class="grid">
   <div class="card wide"><h2>Посетители</h2><div id="chVisits"></div></div>
   <div class="card wide"><h2>Игровая активность</h2><div id="chGames"></div></div>
@@ -84,7 +90,7 @@ pre{background:#0b1220;padding:8px;overflow:auto;white-space:pre-wrap;margin:6px
   <div class="card"><h2>Бункеры</h2><div id="shelters"></div></div>
   <div class="card wide"><h2>Комнаты сейчас</h2><div id="rooms"></div></div>
   <div class="card wide"><h2>Последние ошибки клиентов</h2><div id="errs"></div></div>
-</div>
+</div></div>
 <p class="mut" id="foot"></p>
 </div><div id="tip"></div>
 <script>
@@ -98,7 +104,8 @@ var esc = function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c)
 var fmt = function(n){ return Number(n||0).toLocaleString('ru-RU'); };
 var fmt1 = function(n){ return Number(n||0).toLocaleString('ru-RU',{maximumFractionDigits:1}); };
 var pad = function(n){ return (n<10?'0':'')+n; };
-var state = { preset:'7d', from:0, to:0, last:null };
+var state = { preset:'7d', from:0, to:0, last:null, tab:'all', modes:null };
+var TABS = [['all','Общее'],['classic','Классический'],['chronicle','Хроника бункера'],['3d','Бункер 3D']];
 
 // ---------- период ----------
 function dayStart(t){ var d=new Date(t); d.setHours(0,0,0,0); return d.getTime(); }
@@ -137,9 +144,16 @@ function api(path){
   return fetch(path+(path.indexOf('?')>-1?'&':'?')+'token='+encodeURIComponent(TOKEN),{headers:{'x-admin-token':TOKEN}})
     .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); });
 }
+function drawTabs(){
+  $('tabs').innerHTML = TABS.map(function(x){ return '<button data-t="'+x[0]+'" class="'+(state.tab===x[0]?'on':'')+'">'+x[1]+(x[0]==='chronicle'||x[0]==='3d'?'<span class="alpha">альфа</span>':'')+'</button>'; }).join('');
+  $('tabAll').style.display = state.tab==='all' ? '' : 'none';
+  $('tabMode').style.display = state.tab==='all' ? 'none' : '';
+}
+$('tabs').addEventListener('click',function(e){ var b=e.target.closest&&e.target.closest('button'); var t=b&&b.getAttribute('data-t'); if(t){ state.tab=t; drawTabs(); if(state.modes) renderMode(); load(); } });
 function load(){
   var q='/api/admin/report?from='+state.from+'&to='+state.to+'&bucket='+$('bucket').value+'&tz='+TZ;
-  Promise.all([api(q),api('/api/admin/live')]).then(function(r){ state.last=r[0]; render(r[0],r[1]); })
+  var qm='/api/admin/modes?from='+state.from+'&to='+state.to+'&bucket='+$('bucket').value+'&tz='+TZ;
+  Promise.all([api(q),api('/api/admin/live'),api(qm)]).then(function(r){ state.last=r[0]; state.modes=r[2]; render(r[0],r[1]); renderMode(); $('note').style.display = r[0].eventsTotal===0 ? 'block':'none'; })
     .catch(function(e){ $('note').style.display='block'; $('note').textContent='Не удалось загрузить данные: '+e.message; });
 }
 
@@ -206,6 +220,52 @@ function render(r,live){
     : '<div class="empty">Ошибок нет</div>';
   var since = r.firstEventAt ? new Date(r.firstEventAt).toLocaleString('ru-RU') : '—';
   $('foot').textContent = 'Детальные события накапливаются с '+since+' · всего событий: '+fmt(r.eventsTotal)+' · IP-адреса не сохраняются, определяется только страна и город.';
+}
+function dline(cur,prev,inv){ return delta(cur,prev,inv); }
+function renderMode(){
+  var tab=state.tab, M=state.modes; if(tab==='all'||!M) return;
+  var m=M.modes[tab], t=m.totals, p=m.prev, k='';
+  var ret = '';
+  k += kpi('Заходы',fmt(t.visits),t.visits,p.visits);
+  k += kpi('Уникальные',fmt(t.uniques),t.uniques,p.uniques);
+  k += kpi('Игр начато',fmt(t.starts),t.starts,p.starts);
+  k += kpi('Игр завершено',fmt(t.overs),t.overs,p.overs,false,'доходят до конца: '+fmt1(t.completionPct)+'%');
+  if(tab==='classic'){
+    k += kpi('Провальные партии',t.overs?fmt1(100-t.winPct)+'%':'—',t.overs?100-t.winPct:null,100-p.winPct,true,'средний шанс выживания '+(t.overs?Math.round(t.avgSurvival)+'%':'—'));
+    k += kpi('Игроков в партии',fmt1(t.avgPlayers),t.avgPlayers,p.avgPlayers);
+    k += kpi('Длительность',fmt1(t.avgDurationMin)+' мин',t.avgDurationMin,p.avgDurationMin,false,'раундов: '+fmt1(t.avgRounds));
+  } else if(tab==='chronicle'){
+    k += kpi('Выжили (успех)',t.overs?fmt1(t.winPct)+'%':'—',t.overs?t.winPct:null,p.winPct,false,'вердикт «выжили» или лучше');
+    k += kpi('Доживает жителей',fmt1(t.avgSurvivors),t.avgSurvivors,p.avgSurvivors);
+    k += kpi('Прошло дней',fmt1(t.avgRounds),t.avgRounds,p.avgRounds);
+    k += kpi('Длительность',fmt1(t.avgDurationMin)+' мин',t.avgDurationMin,p.avgDurationMin);
+  } else {
+    k += kpi('Побед',t.overs?fmt1(t.winPct)+'%':'—',t.overs?t.winPct:null,p.winPct,false,'все шаги пройдены');
+    k += kpi('Средние очки',fmt(Math.round(t.avgScore)),t.avgScore,p.avgScore);
+    k += kpi('Аварий устранено',fmt1(t.avgSurvivors),t.avgSurvivors,p.avgSurvivors,false,'в среднем за партию');
+    k += kpi('Длительность',fmt1(t.avgDurationMin)+' мин',t.avgDurationMin,p.avgDurationMin);
+  }
+  $('mKpis').innerHTML=k;
+  var labels=m.series.map(function(s){return label(s.t,M.bucket);});
+  var g='<div class="card wide"><h2>Заходы и игры</h2><div id="mChart"></div></div>';
+  var lists=[];
+  if(tab==='classic') lists=[['Катастрофы',m.catastrophes],['Бункеры',m.shelters],['Размер партий (игроков)',Object.keys(m.playersHist).map(function(x){return {name:x+' игр.',n:m.playersHist[x],k:+x};}).sort(function(a,b){return a.k-b.k;})]];
+  else if(tab==='chronicle') lists=[['Темы бункера',m.themes],['Вердикты',m.verdicts],['Сколько дней длились партии',m.daysHist.map(function(x){return {name:'день '+x.name,n:x.n};})]];
+  else lists=[['Бункеры',m.themes],['Профессии игроков',m.profs],['Итоги',m.results],['Победы по бункерам',m.themeWin]];
+  lists.forEach(function(l,i){ g+='<div class="card"><h2>'+l[0]+'</h2><div id="mList'+i+'"></div></div>'; });
+  if(tab==='chronicle') g+='<div class="card wide"><h2>События и выбор игроков</h2><div id="mEvents"></div></div>';
+  $('mGrid').innerHTML=g;
+  barChart($('mChart'),labels,[
+    {name:'Заходы',color:C.bl,data:m.series.map(function(s){return s.visits;})},
+    {name:'Игры начаты',color:C.am,data:m.series.map(function(s){return s.starts;})},
+    {name:'Игры завершены',color:C.gr,data:m.series.map(function(s){return s.overs;})}]);
+  lists.forEach(function(l,i){ list($('mList'+i),l[1]); });
+  if(tab==='chronicle'){
+    $('mEvents').innerHTML = m.events.length ? '<table><tr><th>Событие</th><th>Выпадало</th><th>Успех</th><th>Выбор вариантов (№ — раз)</th></tr>'+
+      m.events.map(function(e){ return '<tr><td>'+esc(e.id)+'</td><td>'+e.n+'</td><td>'+e.okPct+'%</td><td class="mut">'+e.choices.map(function(c){return (c.i+1)+' — '+c.n;}).join(' · ')+'</td></tr>'; }).join('')+'</table>'
+      : '<div class="empty">Пока нет данных: статистика копится после обновления</div>';
+  }
+  if(!t.starts && !t.visits) $('mGrid').insertAdjacentHTML('afterbegin','<div class="note" style="display:block;grid-column:1/-1">Данных по этому режиму пока нет: сбор начинается после обновления.</div>');
 }
 function funnel(t){
   var steps=[['Уникальные посетители',t.uniques],['Вошли в комнату',t.rooms+t.joins],['Начали игру',t.starts],['Доиграли до конца',t.overs]];
@@ -287,7 +347,7 @@ $('csv').addEventListener('click',function(){
   a.download='bunker-stats.csv'; a.click();
 });
 
-applyPreset('7d'); load();
+drawTabs(); applyPreset('7d'); load();
 setInterval(function(){ if($('auto').checked && state.preset!=='yest' && state.preset!=='custom') { if(state.preset!=='all'){ var keep=state.to-state.from; applyPreset(state.preset); } else { state.to=Date.now(); } load(); } else if($('auto').checked){ load(); } },30000);
 })();
 </script></body></html>`;
