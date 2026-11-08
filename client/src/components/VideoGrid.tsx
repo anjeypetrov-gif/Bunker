@@ -187,7 +187,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
           if (!rows) return cardEl;
           return (
             <div key={player.id} className="flex gap-2 items-stretch">
-              <div className="w-[42%] sm:w-52 xl:w-44 shrink-0">{cardEl}</div>
+              <div className="w-full md:w-60 lg:w-72 shrink-0">{cardEl}</div>
               <RevealedList player={player} onCardClick={(card) => setInspected({ playerName: player.name, card })} />
             </div>
           );
@@ -244,7 +244,7 @@ const RevealedList: React.FC<{ player: Player; onCardClick: (card: Card) => void
   const revealed = Object.values(player.cards || {}).filter(c => c && c.isRevealed && c.type !== 'actionCard');
   const [failed, setFailed] = useState<Record<string, boolean>>({});
   return (
-    <div className={`flex-1 min-w-0 border border-slate-800 bg-slate-950/60 p-1.5 ${player.isExiled ? 'opacity-60' : ''}`}>
+    <div className={`hidden md:block self-start w-max max-w-[calc(100%-16rem)] lg:max-w-[calc(100%-19rem)] min-w-[11rem] border border-slate-800 bg-slate-950/60 p-1.5 ${player.isExiled ? 'opacity-60' : ''}`}>
       <div className="text-[10px] font-mono text-slate-400 mb-1 flex items-center justify-between">
         <span className="truncate font-bold text-slate-200">{player.name}</span>
         <span className="shrink-0 ml-2">раскрыто: <span className="text-amber-300 font-bold">{revealed.length}</span></span>
@@ -252,7 +252,7 @@ const RevealedList: React.FC<{ player: Player; onCardClick: (card: Card) => void
       {revealed.length === 0 ? (
         <div className="text-[11px] text-slate-500 italic px-1 py-2">Пока ничего не раскрыто</div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-1">
+        <div className="grid grid-cols-1 gap-1">
           {revealed.map(c => {
             const art = getCardArt(c.type, c.title);
             return (
@@ -267,9 +267,9 @@ const RevealedList: React.FC<{ player: Player; onCardClick: (card: Card) => void
                 ) : (
                   <div className="w-9 h-9 shrink-0 bg-slate-800 border border-slate-700" />
                 )}
-                <div className="min-w-0 leading-tight">
+                <div className="min-w-0 leading-tight pr-1">
                   <div className="text-[8px] font-mono text-slate-500 uppercase truncate">{CARD_TYPE_LABELS[c.type]}</div>
-                  <div className="text-[11px] font-bold text-amber-200 break-words">{c.title}</div>
+                  <div className="text-[11px] font-bold text-amber-200 whitespace-nowrap">{c.title}</div>
                 </div>
               </button>
             );
@@ -500,8 +500,8 @@ const PlayerVideoCard: React.FC<PlayerVideoCardProps> = ({
           name block taller than expected) — otherwise the name overlay,
           despite having no clickable content of its own, would sit on top
           in the DOM stack and silently swallow clicks meant for a pill. */}
-      {player.cards && !hidePills && (
-        <div className="absolute bottom-10 left-2 right-2 z-10 flex flex-wrap gap-1 max-h-12 overflow-hidden">
+      {player.cards && (
+        <div className={`absolute bottom-10 left-2 right-2 z-10 flex flex-wrap gap-1 max-h-12 overflow-hidden ${hidePills ? 'md:hidden' : ''}`}>
           {Object.values(player.cards).filter(c => c && c.isRevealed && c.type !== 'actionCard').map(c => (
             <button
               key={c.id}
