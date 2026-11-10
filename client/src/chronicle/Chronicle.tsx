@@ -6,6 +6,7 @@ import { makeHuman, dress, animate, makeBubble, say, tickBubble, makeLabel, type
 import { ROOMS, roomById, findPath, collide, freePoint, type Pt } from '../proto3d/layout';
 import { getCardArt } from '../data/cardArt';
 import { reportGame } from '../utils/telemetry';
+import { applyEnvironment, Pinch } from '../proto3d/env';
 import { RES_META, type Res, type ResKey } from './events';
 import {
   newGame, pickEvent, resolve, endDay, alive, viewChoice, fmt, verdict, chronicleText, newResident,
@@ -84,6 +85,7 @@ export default function Chronicle() {
     const dom = renderer.domElement;
     dom.style.touchAction = 'none';
     const scene = new THREE.Scene();
+    applyEnvironment(renderer, scene);
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 160);
     let camScale = 1;
     const cam = { yaw: 0.25, pitch: 1.1, dist: 44, tx: 0, tz: 0, ty: 0, wantDist: 44, wantTx: 0, wantTz: 0, zoom: 1, drag: false, lastX: 0, lastY: 0, auto: true };
@@ -187,15 +189,21 @@ export default function Chronicle() {
     };
 
     // управление камерой
-    const onDown = (e: PointerEvent) => { cam.drag = true; cam.lastX = e.clientX; cam.lastY = e.clientY; dom.setPointerCapture(e.pointerId); };
+    const pinch = new Pinch(); let zoom0 = 1;
+    const onDown = (e: PointerEvent) => {
+      try { dom.setPointerCapture(e.pointerId); } catch { /* */ }
+      if (pinch.down(e)) { zoom0 = cam.zoom; cam.drag = false; } else { cam.drag = true; cam.lastX = e.clientX; cam.lastY = e.clientY; }
+    };
     const onMove = (e: PointerEvent) => {
-      if (!cam.drag) return;
+      const k = pinch.move(e);
+      if (k !== null) { cam.zoom = Math.max(0.3, Math.min(1.5, zoom0 / k)); return; }
+      if (!cam.drag || pinch.active) return;
       cam.yaw -= (e.clientX - cam.lastX) * 0.006;
       cam.pitch = Math.max(0.55, Math.min(1.45, cam.pitch + (e.clientY - cam.lastY) * 0.004));
       cam.lastX = e.clientX; cam.lastY = e.clientY;
     };
-    const onUp = (e: PointerEvent) => { cam.drag = false; try { dom.releasePointerCapture(e.pointerId); } catch { /* */ } };
-    const onWheel = (e: WheelEvent) => { e.preventDefault(); cam.zoom = Math.max(0.55, Math.min(1.5, cam.zoom * (e.deltaY > 0 ? 1.08 : 0.92))); };
+    const onUp = (e: PointerEvent) => { pinch.up(e); cam.drag = false; try { dom.releasePointerCapture(e.pointerId); } catch { /* */ } };
+    const onWheel = (e: WheelEvent) => { e.preventDefault(); cam.zoom = Math.max(0.3, Math.min(1.5, cam.zoom * (e.deltaY > 0 ? 1.08 : 0.92))); };
     const noMenu = (e: Event) => e.preventDefault();
     dom.addEventListener('pointerdown', onDown); dom.addEventListener('pointermove', onMove);
     dom.addEventListener('pointerup', onUp); dom.addEventListener('pointercancel', onUp);

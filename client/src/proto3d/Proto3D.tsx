@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { reportGame } from '../utils/telemetry';
+import { applyEnvironment, Pinch } from './env';
 import * as THREE from 'three';
 import { getCardArt } from '../data/cardArt';
 import {
@@ -94,6 +95,7 @@ export const Proto3D: React.FC = () => {
     const dom = renderer.domElement;
     dom.style.touchAction = 'none';
     const scene = new THREE.Scene();
+    applyEnvironment(renderer, scene);
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 120);
     let camScale = 1;
     const cam = { yaw: 0, pitch: 1.12, dist: 16 };
@@ -282,15 +284,21 @@ export const Proto3D: React.FC = () => {
 
     // ---------- Ввод ----------
     let drag: { x: number; y: number; id: number } | null = null;
-    const pd = (e: PointerEvent) => { e.preventDefault(); drag = { x: e.clientX, y: e.clientY, id: e.pointerId }; dom.setPointerCapture(e.pointerId); };
+    const pinch = new Pinch(); let pinchDist0 = 16;
+    const pd = (e: PointerEvent) => {
+      e.preventDefault(); try { dom.setPointerCapture(e.pointerId); } catch { /* */ }
+      if (pinch.down(e)) { pinchDist0 = cam.dist; drag = null; } else drag = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    };
     const pm = (e: PointerEvent) => {
-      if (!drag || drag.id !== e.pointerId) return;
+      const k = pinch.move(e);
+      if (k !== null) { cam.dist = Math.max(3.5, Math.min(26, pinchDist0 / k)); return; }
+      if (pinch.active || !drag || drag.id !== e.pointerId) return;
       cam.yaw -= (e.clientX - drag.x) * 0.008;
       cam.pitch = Math.max(0.4, Math.min(1.45, cam.pitch + (e.clientY - drag.y) * 0.006));
       drag.x = e.clientX; drag.y = e.clientY;
     };
-    const pu = () => { drag = null; };
-    const wh = (e: WheelEvent) => { e.preventDefault(); cam.dist = Math.max(6, Math.min(26, cam.dist + e.deltaY * 0.012)); };
+    const pu = (e: PointerEvent) => { pinch.up(e); drag = null; };
+    const wh = (e: WheelEvent) => { e.preventDefault(); cam.dist = Math.max(3.5, Math.min(26, cam.dist + e.deltaY * 0.012)); };
     const cm = (e: Event) => e.preventDefault();
     dom.addEventListener('pointerdown', pd); dom.addEventListener('pointermove', pm);
     dom.addEventListener('pointerup', pu); dom.addEventListener('pointercancel', pu);

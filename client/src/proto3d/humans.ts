@@ -4,7 +4,7 @@ export interface Human {
   group: THREE.Group; body: THREE.Group; torso: THREE.Group; head: THREE.Group;
   legL: THREE.Group; legR: THREE.Group; shinL: THREE.Group; shinR: THREE.Group;
   armL: THREE.Group; armR: THREE.Group; foreL: THREE.Group; foreR: THREE.Group;
-  eyes: THREE.Mesh[]; wrench: THREE.Mesh; outfit: THREE.Group; phase: number; female: boolean;
+  eyes: THREE.Mesh[]; mouth: THREE.Mesh; brows: THREE.Mesh[]; wrench: THREE.Mesh; outfit: THREE.Group; phase: number; female: boolean;
   shirt: number; pants: number; hair: number; skin: number; sleeping: boolean;
 }
 
@@ -24,7 +24,7 @@ function withCloth(name: string, cb: (t: THREE.Texture) => void) {
   }, undefined, () => { clothCache.set(name, null); clothWait.delete(name); });
 }
 const fabric = (color: number, tex?: string, r = 0.8) => {
-  const m = new THREE.MeshStandardMaterial({ color, roughness: r, metalness: 0.03 });
+  const m = new THREE.MeshPhysicalMaterial({ color, roughness: r, metalness: 0.02, sheen: 0.55, sheenRoughness: 0.75, sheenColor: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.45) });
   if (tex) withCloth(tex, t => { m.map = t; m.needsUpdate = true; });
   return m;
 };
@@ -32,19 +32,33 @@ const fabric = (color: number, tex?: string, r = 0.8) => {
 const G = (geo: THREE.BufferGeometry, mt: THREE.Material, x = 0, y = 0, z = 0, parent?: THREE.Object3D) => {
   const me = new THREE.Mesh(geo, mt); me.position.set(x, y, z); me.castShadow = true; parent?.add(me); return me;
 };
-const caps = (r: number, len: number) => new THREE.CapsuleGeometry(r, len, 5, 10);
+const caps = (r: number, len: number) => new THREE.CapsuleGeometry(r, len, 8, 18);
 const pivot = (parent: THREE.Object3D, x: number, y: number, z = 0) => { const p = new THREE.Group(); p.position.set(x, y, z); parent.add(p); return p; };
+
+let blobTex: THREE.CanvasTexture | null = null;
+function blob(): THREE.Mesh {
+  if (!blobTex && typeof document !== 'undefined') {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const x = c.getContext('2d')!; const gr = x.createRadialGradient(32, 32, 2, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(0,0,0,0.55)'); gr.addColorStop(0.6, 'rgba(0,0,0,0.18)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = gr; x.fillRect(0, 0, 64, 64); blobTex = new THREE.CanvasTexture(c);
+  }
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.95), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.y = 0.012; m.renderOrder = 1; return m;
+}
 
 export function makeHuman(scene: THREE.Scene, shirt: number, pants: number, hair: number, skin = 0xd9b89a, look: { female?: boolean; style?: number } = {}): Human {
   const female = !!look.female;
   const style = look.style ?? Math.floor(Math.random() * 3);
   const g = new THREE.Group();
   const body = new THREE.Group(); g.add(body);
-  const skinM = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.62, metalness: 0 });
+  const skinM = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.55, metalness: 0, emissive: new THREE.Color(skin).multiplyScalar(0.12) });
   const shirtM = fabric(shirt, 'cloth-knit');
   const pantsM = fabric(pants, 'cloth-workwear');
   const hairM = new THREE.MeshStandardMaterial({ color: hair, roughness: 0.85 });
-  const shoeM = new THREE.MeshStandardMaterial({ color: 0x1f2329, roughness: 0.7 });
+  const shoeM = new THREE.MeshStandardMaterial({ color: 0x23272e, roughness: 0.55, metalness: 0.05 });
+  const soleM = new THREE.MeshStandardMaterial({ color: 0x0f1114, roughness: 0.9 });
+  const lipM = new THREE.MeshStandardMaterial({ color: female ? 0xa8505a : 0x8a4a42, roughness: 0.5 });
   const sc = female ? 0.94 : 1;
 
   // таз и торс
@@ -52,6 +66,9 @@ export function makeHuman(scene: THREE.Scene, shirt: number, pants: number, hair
   const torso = pivot(body, 0, 0.98);
   const chest = G(caps(0.22 * sc, 0.3), shirtM, 0, 0.42, 0, torso); chest.scale.set(female ? 1.15 : 1.3, 1, 0.82);
   if (female) G(new THREE.SphereGeometry(0.09, 10, 8), shirtM, 0, 0.45, 0.17, torso).scale.set(1.5, 1, 0.8);
+  const belt = G(new THREE.CylinderGeometry(0.23 * sc, 0.23 * sc, 0.045, 18), new THREE.MeshStandardMaterial({ color: 0x2b2118, roughness: 0.5 }), 0, 0.03, 0, torso); belt.scale.set(1.3, 1, 0.85);
+  G(new THREE.BoxGeometry(0.05, 0.04, 0.02), new THREE.MeshStandardMaterial({ color: 0xc9a24a, metalness: 0.8, roughness: 0.3 }), 0, 0.03, 0.2 * 0.85 * 1.0, torso);
+  const collar = G(new THREE.TorusGeometry(0.09, 0.028, 8, 16), shirtM, 0, 0.8, 0.0, torso); collar.rotation.x = Math.PI / 2;
   // шея и голова
   const neck = G(new THREE.CylinderGeometry(0.075, 0.085, 0.14, 10), skinM, 0, 0.84, 0, torso);
   void neck;
@@ -59,18 +76,27 @@ export function makeHuman(scene: THREE.Scene, shirt: number, pants: number, hair
   const skull = G(new THREE.SphereGeometry(0.235, 22, 18), skinM, 0, 0.17, 0, head); skull.scale.set(0.95, 1.07, 1);
   G(new THREE.SphereGeometry(0.06, 8, 6), skinM, -0.225, 0.14, 0, head).scale.set(0.5, 1, 0.8);
   G(new THREE.SphereGeometry(0.06, 8, 6), skinM, 0.225, 0.14, 0, head).scale.set(0.5, 1, 0.8);
-  G(new THREE.SphereGeometry(0.045, 8, 6), skinM, 0, 0.1, 0.235, head); // нос
-  const eyeM = new THREE.MeshBasicMaterial({ color: 0x14171c });
+  G(new THREE.SphereGeometry(0.042, 12, 10), skinM, 0, 0.105, 0.232, head).scale.set(0.9, 1.15, 0.9); // нос
+  for (const x of [-0.1, 0.1]) { const ch = G(new THREE.SphereGeometry(0.05, 10, 8), new THREE.MeshStandardMaterial({ color: new THREE.Color(skin).lerp(new THREE.Color(0xe08a7a), 0.3), roughness: 0.7, transparent: true, opacity: 0.55 }), x, 0.075, 0.196, head); ch.scale.set(1, 0.7, 0.35); ch.castShadow = false; }
+  const irisC = [0x4a3022, 0x2f5a7a, 0x3f6b3a, 0x5a4a2a, 0x2a2f38][Math.floor(Math.random() * 5)];
+  const irisM = new THREE.MeshStandardMaterial({ color: irisC, roughness: 0.25 });
+  const pupM = new THREE.MeshBasicMaterial({ color: 0x050607 });
+  const glintM = new THREE.MeshBasicMaterial({ color: 0xffffff });
   const eyes = [-0.085, 0.085].map(x => {
-    const w = G(new THREE.SphereGeometry(0.05, 10, 8), new THREE.MeshBasicMaterial({ color: 0xf2efe8 }), x, 0.2, 0.2, head); w.scale.set(1.1, 0.85, 0.5); w.castShadow = false;
-    const e = G(new THREE.SphereGeometry(0.028, 8, 6), eyeM, 0, 0, 0.03, w); e.castShadow = false; return w;
+    const w = G(new THREE.SphereGeometry(0.052, 16, 12), new THREE.MeshStandardMaterial({ color: 0xf4f1ea, roughness: 0.2 }), x, 0.2, 0.2, head); w.scale.set(1.1, 0.85, 0.5); w.castShadow = false;
+    const e = G(new THREE.SphereGeometry(0.03, 12, 10), irisM, 0, 0, 0.03, w); e.castShadow = false;
+    G(new THREE.SphereGeometry(0.015, 8, 6), pupM, 0, 0, 0.022, e).castShadow = false;
+    G(new THREE.SphereGeometry(0.007, 6, 5), glintM, 0.011, 0.012, 0.03, e).castShadow = false;
+    return w;
   });
   const browM = new THREE.MeshStandardMaterial({ color: hair, roughness: 0.9 });
-  [-0.085, 0.085].forEach(x => G(new THREE.BoxGeometry(0.09, 0.016, 0.02), browM, x, 0.265, 0.205, head));
-  G(new THREE.BoxGeometry(0.1, 0.014, 0.02), new THREE.MeshStandardMaterial({ color: 0x8a4a42 }), 0, 0.035, 0.215, head);
+  const brows = [-0.085, 0.085].map(x => G(new THREE.BoxGeometry(0.095, female ? 0.012 : 0.02, 0.022), browM, x, 0.268, 0.205, head));
+  const mouth = G(new THREE.SphereGeometry(0.05, 12, 8), lipM, 0, 0.04, 0.208, head); mouth.scale.set(1, 0.22, 0.35); mouth.castShadow = false;
   // причёска
   const cap = G(new THREE.SphereGeometry(0.255, 20, 14, 0, Math.PI * 2, 0, Math.PI * (style === 2 ? 0.5 : 0.56)), hairM, 0, 0.19, -0.015, head);
   cap.rotation.x = -0.18;
+  const fringe = G(new THREE.SphereGeometry(0.245, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.34), hairM, 0, 0.215, 0.045, head); fringe.rotation.x = 0.55; fringe.scale.set(1.0, 1, 1.02);
+  if (style !== 2) for (const x of [-0.215, 0.215]) G(new THREE.BoxGeometry(0.04, 0.12, 0.09), hairM, x, 0.17, 0.04, head);
   if (female || style === 1) { G(caps(0.2, 0.22), hairM, 0, 0.0, -0.1, head).scale.set(1.1, 1, 0.6); }
   if (female && style === 0) G(new THREE.SphereGeometry(0.1, 10, 8), hairM, 0, 0.4, -0.12, head); // пучок
   // руки
@@ -80,7 +106,10 @@ export function makeHuman(scene: THREE.Scene, shirt: number, pants: number, hair
     G(caps(0.075, 0.2), shirtM, 0, -0.17, 0, sh);
     const fore = pivot(sh, 0, -0.34);
     G(caps(0.065, 0.2), skinM, 0, -0.16, 0, fore);
-    G(new THREE.SphereGeometry(0.07, 10, 8), skinM, 0, -0.31, 0, fore);
+    G(new THREE.SphereGeometry(0.07, 14, 10), skinM, 0, -0.31, 0, fore).scale.set(1, 1.15, 0.7);
+    G(new THREE.SphereGeometry(0.028, 8, 6), skinM, sx * 0.05, -0.28, 0.035, fore);
+    const cuff = G(new THREE.CylinderGeometry(0.072, 0.074, 0.05, 14), shirtM, 0, -0.01, 0, fore);
+    void cuff;
     return { sh, fore };
   };
   const aL = mkArm(-1), aR = mkArm(1);
@@ -93,16 +122,22 @@ export function makeHuman(scene: THREE.Scene, shirt: number, pants: number, hair
     G(caps(0.1 * sc, 0.28), pantsM, 0, -0.22, 0, hip);
     const shin = pivot(hip, 0, -0.46);
     G(caps(0.085 * sc, 0.28), pantsM, 0, -0.22, 0, shin);
-    G(new THREE.BoxGeometry(0.17, 0.11, 0.3), shoeM, 0, -0.45, 0.05, shin);
+    G(new THREE.BoxGeometry(0.17, 0.09, 0.26), shoeM, 0, -0.43, 0.04, shin);
+    G(new THREE.SphereGeometry(0.085, 12, 8), shoeM, 0, -0.43, 0.17, shin).scale.set(1, 0.8, 1.05);
+    G(new THREE.BoxGeometry(0.18, 0.03, 0.34), soleM, 0, -0.49, 0.06, shin);
     return { hip, shin };
   };
   const lL = mkLeg(-1), lR = mkLeg(1);
   const outfit = new THREE.Group(); body.add(outfit);
+  // телосложение: рост и ширина немного различаются у всех
+  const hgt = (female ? 0.96 : 1) * (0.95 + Math.random() * 0.1), wid = 0.95 + Math.random() * 0.14;
+  g.scale.set(hgt * wid, hgt, hgt * wid);
+  // мягкая «контактная» тень под ногами
+  g.add(blob());
   scene.add(g);
-  g.scale.setScalar(female ? 0.96 : 1);
   return {
     group: g, body, torso, head, legL: lL.hip, legR: lR.hip, shinL: lL.shin, shinR: lR.shin,
-    armL: aL.sh, armR: aR.sh, foreL: aL.fore, foreR: aR.fore, eyes, wrench, outfit,
+    armL: aL.sh, armR: aR.sh, foreL: aL.fore, foreR: aR.fore, eyes, mouth, brows, wrench, outfit,
     phase: Math.random() * 6, female, shirt, pants, hair, skin, sleeping: false
   };
 }
@@ -152,6 +187,16 @@ export function dress(h: Human, prof: string) {
   h.outfit.userData.items = items;
 }
 
+const _wp = new THREE.Vector3();
+/** Подпись не раздувается при сильном приближении камеры: размер сжимается пропорционально расстоянию. */
+function shrinkNear(sp: THREE.Sprite, w: number, h: number, ref = 13) {
+  sp.onBeforeRender = (_r, _s, cam) => {
+    sp.getWorldPosition(_wp);
+    const k = Math.max(0.12, Math.min(1, _wp.distanceTo(cam.position) / ref));
+    if (Math.abs(sp.scale.x - w * k) > 1e-3) { sp.scale.set(w * k, h * k, 1); sp.updateMatrixWorld(); }
+  };
+}
+
 const lerpA = (cur: number, target: number, k: number) => cur + (target - cur) * k;
 
 /** Анимация: ходьба с коленями и локтями, дыхание, взгляд по сторонам, моргание, жесты, сон. speed — пройденный путь за кадр. */
@@ -161,6 +206,10 @@ export function animate(h: Human, speed: number, t: number, working = false, pan
   const blink = blinkT < 0.12 ? 0.1 : 1;
   h.eyes.forEach(e => (e.scale.y = 0.85 * (sleep ? 0.1 : blink)));
   h.sleeping = sleep;
+  const mt = sleep ? 0.5 : panic ? 2.6 + Math.sin(t * 18) * 0.5 : talk ? 0.5 + Math.abs(Math.sin(t * 11 + h.phase)) * 1.5 : 1;
+  h.mouth.scale.y = lerpA(h.mouth.scale.y, 0.22 * mt, 0.35);
+  h.mouth.scale.x = lerpA(h.mouth.scale.x, panic ? 0.75 : 1, 0.3);
+  h.brows.forEach((b, i) => { b.position.y = lerpA(b.position.y, panic ? 0.295 : sleep ? 0.255 : 0.268, 0.25); b.rotation.z = lerpA(b.rotation.z, panic ? (i ? -0.25 : 0.25) : 0, 0.25); });
   if (sleep) {
     h.body.rotation.x = lerpA(h.body.rotation.x, -Math.PI / 2, 0.3);
     h.body.position.y = lerpA(h.body.position.y, 0.15, 0.3);
@@ -228,6 +277,7 @@ export function makeBubble(parent: THREE.Object3D, y = 2.9): Bubble {
   sp.scale.set(3.6, 0.9, 1);
   sp.position.y = y;
   sp.renderOrder = 20;
+  shrinkNear(sp, 3.6, 0.9);
   sp.visible = false;
   parent.add(sp);
   return { sp, c, tex, text: '', ttl: 0 };
@@ -275,5 +325,6 @@ export function makeLabel(text: string, w: number, h: number, font: string, colo
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }));
   sp.renderOrder = 15;
   sp.scale.set(w, h, 1);
+  shrinkNear(sp, w, h, 15);
   return sp;
 }
